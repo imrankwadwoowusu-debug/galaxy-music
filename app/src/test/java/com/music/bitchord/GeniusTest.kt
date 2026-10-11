@@ -107,9 +107,18 @@ class GeniusTest {
         assertEquals("Line 3", lines[5].text)
     }
 
+    /**
+     * Live integration test: hits genius.com over the network, so it stays out
+     * of CI by default and only runs when explicitly opted in:
+     * `./gradlew :app:testDevDebugUnitTest -DRUN_LIVE_GENIUS_TESTS=true --tests '*GeniusTest*'`.
+     * The parser itself is covered by the fixture tests above.
+     */
     @Test
     fun `live genius search and scraping test with noisy titles`() = kotlinx.coroutines.runBlocking {
-        println("--- TEST 1: Queen - Bohemian Rhapsody (Official Video) ---")
+        org.junit.Assume.assumeTrue(
+            "Live Genius tests are disabled; rerun with -DRUN_LIVE_GENIUS_TESTS=true",
+            System.getProperty("RUN_LIVE_GENIUS_TESTS") == "true",
+        )        println("--- TEST 1: Queen - Bohemian Rhapsody (Official Video) ---")
         val lyrics1 = Genius.lyrics("Bohemian Rhapsody (Official Video)", "Queen")
         assertNotNull(lyrics1)
         assertTrue(lyrics1!!.isNotEmpty())
