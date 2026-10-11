@@ -52,16 +52,29 @@ class LocaleStringsTest(private val tag: String) {
         private val baseKeys: Set<String> by lazy {
             translatableKeys(parse(File(resDir, "values/strings.xml")))
         }
+
+        /**
+         * App language tags use BCP-47 with a dash (`zh-TW`); Android resource
+         * directories use `-r` for regions and plain language codes where the
+         * script is implied (`values-zh` is Simplified). This mirrors what
+         * Android itself resolves at runtime.
+         */
+        fun resourceQualifier(tag: String): String = when (tag) {
+            "zh-CN" -> "zh"
+            "zh-TW" -> "zh-rTW"
+            else -> tag
+        }
     }
 
     @Test
     fun strings_containsAllBaseKeys() {
-        val localeFile = File(resDir, "values-$tag/strings.xml")
-        assertTrue("values-$tag/strings.xml must exist", localeFile.exists())
+        val qualifier = resourceQualifier(tag)
+        val localeFile = File(resDir, "values-$qualifier/strings.xml")
+        assertTrue("values-$qualifier/strings.xml must exist", localeFile.exists())
 
         val missingKeys = baseKeys - translatableKeys(parse(localeFile))
         assertTrue(
-            "values-$tag/strings.xml is missing ${missingKeys.size} keys from values/strings.xml: $missingKeys",
+            "values-$qualifier/strings.xml is missing ${missingKeys.size} keys from values/strings.xml: $missingKeys",
             missingKeys.isEmpty(),
         )
     }

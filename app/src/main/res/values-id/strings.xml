@@ -168,7 +168,9 @@
     <string name="hindi">Hindi</string>
     <string name="japanese">Jepang</string>
     <string name="russian">Rusia</string>
-    <string name="chinese">China (Sederhana)</string>
+        <string name="chinese_simplified">Tionghoa (Sederhana)</string>
+    <string name="chinese_traditional">Tionghoa (Tradisional)</string>
+<string name="chinese">China (Sederhana)</string>
     <string name="hebrew">Ibrani</string>
     <string name="italian">Italia</string>
     <string name="turkish">Turki</string>

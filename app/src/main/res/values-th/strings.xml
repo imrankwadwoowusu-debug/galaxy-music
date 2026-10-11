@@ -180,7 +180,9 @@
     <string name="hindi">ฮินดี</string>
     <string name="japanese">ญี่ปุ่น</string>
     <string name="russian">รัสเซีย</string>
-    <string name="chinese">จีน (ตัวย่อ)</string>
+        <string name="chinese_simplified">ภาษาจีน (ตัวย่อ)</string>
+    <string name="chinese_traditional">ภาษาจีน (ตัวเต็ม)</string>
+<string name="chinese">จีน (ตัวย่อ)</string>
     <string name="hebrew">ฮีบรู</string>
     <string name="italian">อิตาลี</string>
     <string name="turkish">ตุรกี</string>

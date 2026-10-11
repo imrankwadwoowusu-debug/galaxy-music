@@ -183,7 +183,9 @@
     <string name="hindi">Хинди</string>
     <string name="japanese">Японский</string>
     <string name="russian">Русский</string>
-    <string name="chinese">Китайский (упрощённый)</string>
+        <string name="chinese_simplified">Китайский (упрощённый)</string>
+    <string name="chinese_traditional">Китайский (традиционный)</string>
+<string name="chinese">Китайский (упрощённый)</string>
     <string name="hebrew">Иврит</string>
     <string name="italian">Итальянский</string>
     <string name="turkish">Турецкий</string>
