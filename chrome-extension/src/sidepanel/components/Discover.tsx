@@ -3,7 +3,6 @@
 // artwork and metadata; playback picks the best source per song.
 import { useState } from 'react';
 import { DISCOVER_GENRES, DISCOVER_LANGUAGES, getDiscover, type DiscoverTrack } from '../../lib/discover';
-import { setSettings } from '../../lib/settings';
 import { send, useCached, useSettings } from '../hooks';
 import { TrackRow } from './Items';
 import { Icon } from './Icon';
@@ -48,19 +47,8 @@ export function DiscoverPage({ ctx }: { ctx: Ctx }) {
   const langs = s.discoverLangs?.length ? s.discoverLangs : ['english'];
   const key = `discover:${langs.join(',')}:${genre}`;
   const { data, error, loading, refreshing, retry } = useCached(key, () => getDiscover(langs, genre), 30 * 60 * 1000);
-  const toggleLang = (id: string) => {
-    const next = langs.includes(id) ? langs.filter((x) => x !== id) : [...langs, id];
-    if (next.length) setSettings({ discoverLangs: next });
-  };
   return (
     <div className="discover">
-      <div className="disc-chips" role="group" aria-label="Languages">
-        {DISCOVER_LANGUAGES.map((l) => (
-          <button key={l.id} className={`disc-chip ${langs.includes(l.id) ? 'on' : ''}`} aria-pressed={langs.includes(l.id)} onClick={() => toggleLang(l.id)}>
-            {langs.includes(l.id) && <Icon name="check" size={14} />}{l.label}
-          </button>
-        ))}
-      </div>
       <div className="disc-chips genres" role="radiogroup" aria-label="Genre">
         {DISCOVER_GENRES.map((g) => (
           <button key={g.id} role="radio" aria-checked={genre === g.id} className={`disc-chip ghost ${genre === g.id ? 'on' : ''}`} onClick={() => setGenre(g.id)}>{g.label}</button>
@@ -70,7 +58,7 @@ export function DiscoverPage({ ctx }: { ctx: Ctx }) {
         <div className="err-box"><span>{error}</span><button className="pill sm ghost" onClick={retry}>Try again</button></div>
       ) : data && (
         <>
-          <Block title="New releases" sub={refreshing ? 'Updating…' : 'Last 6 weeks, newest first'} tracks={data.fresh} ctx={ctx} withDate initial={12} />
+          <Block title="New releases" sub={refreshing ? 'Updating…' : 'Last 6 weeks'} tracks={data.fresh} ctx={ctx} withDate initial={12} />
           {data.sections.map((sec) => <Block key={sec.id} title={sec.title} sub={sec.sub} tracks={sec.tracks} ctx={ctx} ranked />)}
           {!data.fresh.length && !data.sections.length && <div className="hint">Nothing new for this mix yet. Try another genre or add a language.</div>}
           <p className="disc-foot">

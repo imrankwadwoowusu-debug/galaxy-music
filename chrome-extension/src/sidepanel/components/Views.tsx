@@ -7,6 +7,7 @@ import { SearchBar } from './SearchBar';
 import { getLiked, getRecent } from '../../lib/history';
 import { send, useCached } from '../hooks';
 import { CardTile, playSongWithRadio, TrackRow } from './Items';
+import { DiscoverPage } from './Discover';
 import { Icon } from './Icon';
 
 
@@ -269,15 +270,10 @@ export function ListenNow({ ctx, signedIn, session, onSignIn, onMood, goExplore 
 // ---------- Explore ----------
 export function ExplorePage({ ctx, onMood }: { ctx: Ctx; onMood: (c: MoodChip) => void }) {
   const moods = useCached('moods', getMoods, 24 * HOUR);
-  const fresh = useCached('new', getNewReleases, 6 * HOUR);
-  const firstNew = fresh.data?.find((s) => s.cards.length);
   return (
     <div>
-      {firstNew && (
-        <Scroller title="New releases">
-          {firstNew.cards.map((c, i) => <CardTile key={i} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} />)}
-        </Scroller>
-      )}
+      <DiscoverPage ctx={ctx} />
+      <h2 className="group-title explore-moods">Moods & genres</h2>
       {moods.loading ? <SkelTiles n={10} /> : moods.error ? <Err msg={moods.error} retry={moods.retry} /> : moods.data!.map((g) => (
         <section key={g.title} className="section">
           <h2 className="group-title">{g.title}</h2>

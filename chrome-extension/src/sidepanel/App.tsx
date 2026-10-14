@@ -4,15 +4,13 @@ import { getAccountInfo } from '../lib/innertube';
 import { send, useArtColor, useCached, usePlayer, useSession, useSettings } from './hooks';
 import { Icon } from './components/Icon';
 import { ArtistView, CollectionView, ExplorePage, LibraryPage, ListenNow, MoodView, SearchPage } from './components/Views';
-import { DiscoverPage } from './components/Discover';
 import { MiniBar, NowPlaying } from './components/NowPlaying';
 import { SettingsPage } from './components/Settings';
 import { Arcs } from './components/Logo';
 
-export type Tab = 'listen' | 'discover' | 'explore' | 'library' | 'search';
+export type Tab = 'listen' | 'explore' | 'library' | 'search';
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'listen', label: 'Play', icon: 'play' },
-  { id: 'discover', label: 'New', icon: 'sparkle' },
   { id: 'explore', label: 'Explore', icon: 'compass' },
   { id: 'library', label: 'Library', icon: 'library' },
   { id: 'search', label: 'Search', icon: 'search' },
@@ -71,7 +69,7 @@ export default function App() {
   }, []);
   const theme = settings.theme === 'system' ? (sysDark ? 'dark' : 'light') : settings.theme;
 
-  const titles: Record<Tab, string> = { listen: 'Listen Now', discover: 'New Releases', explore: 'Explore', library: 'Library', search: 'Search' };
+  const titles: Record<Tab, string> = { listen: 'Listen Now', explore: 'Explore', library: 'Library', search: 'Search' };
 
   return (
     <div
@@ -104,7 +102,6 @@ export default function App() {
               <>
                 <h1 className="big-title">{titles[tab]}</h1>
                 {tab === 'listen' && <ListenNow ctx={ctx} me={me} signedIn={signedIn || session === null} session={session ?? ''} onSignIn={() => setSettingsOpen(true)} onMood={onMood} goExplore={() => go('explore')} />}
-                {tab === 'discover' && <DiscoverPage ctx={ctx} />}
                 {tab === 'explore' && <ExplorePage ctx={ctx} onMood={onMood} />}
                 {tab === 'library' && <LibraryPage ctx={ctx} me={me} signedIn={signedIn} session={session ?? ''} onSignIn={() => setSettingsOpen(true)} onTransfer={() => setSettingsOpen('transfer')} />}
                 {tab === 'search' && <SearchPage ctx={ctx} query={query} onSearch={(q) => setQuery(q || null)} onMood={onMood} />}

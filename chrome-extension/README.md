@@ -151,3 +151,7 @@ Improved:
   - After a reload, the song resumes where it was instead of from 0:00.
   - Tab id swaps are followed.
 - **Steady**: once direct sources fail, the tab is kept for 10 minutes. It no longer pauses, retries direct, and restarts the tab on every song.
+
+## v0.7.2 (14 Oct 2026)
+- Removed the "New" tab: new releases now sit at the top of Explore, with genre chips and no language chips.
+- The languages for new releases moved to Settings → New releases languages.

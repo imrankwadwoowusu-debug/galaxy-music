@@ -12,6 +12,7 @@ import { TransferPage } from './Transfer';
 import { EqPane } from './NowPlaying';
 import { useSettings } from '../hooks';
 import { lastfmFinishAuth, lastfmStartAuth } from '../../lib/lastfm';
+import { DISCOVER_LANGUAGES } from '../../lib/discover';
 import { Icon } from './Icon';
 import { LogoMark } from './Logo';
 
@@ -352,6 +353,21 @@ export function SettingsPage({ me, onClose, initial }: { me: AccountInfo | null;
             <Row icon="wifi" title="Streaming quality" sub={s.quality === 'high' ? 'JioSaavn 320 kbps · best YouTube stream' : s.quality === 'normal' ? 'About 160 kbps' : 'About 96 kbps, saves data'} value={quality[s.quality]}>
               <Segmented value={s.quality} options={[{ id: 'low', label: 'Data saver' }, { id: 'normal', label: 'Normal' }, { id: 'high', label: 'High' }]} onChange={(v) => save({ quality: v })} />
             </Row>
+          </Group>
+
+          <Group label="New releases languages" foot="Explore shows new songs in these languages, newest first.">
+            <div className="disc-chips s-chips">
+              {DISCOVER_LANGUAGES.map((l) => {
+                const on = (s.discoverLangs ?? []).includes(l.id);
+                return (
+                  <button key={l.id} className={`disc-chip ${on ? 'on' : ''}`} aria-pressed={on} onClick={() => {
+                    const cur = s.discoverLangs ?? [];
+                    const next = on ? cur.filter((x) => x !== l.id) : [...cur, l.id];
+                    if (next.length) save({ discoverLangs: next });
+                  }}>{on && <Icon name="check" size={14} />}{l.label}</button>
+                );
+              })}
+            </div>
           </Group>
 
           <Group label="Playback">

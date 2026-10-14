@@ -465,7 +465,7 @@ img { color: transparent; }
 .dock > * { pointer-events: auto; }
 .dock .minibar { position: relative; inset: auto; margin: 0; border-radius: 18px; background: var(--glass); backdrop-filter: blur(24px) saturate(170%); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0,0,0,.35); }
 .tabbar {
-  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; padding: 6px; border-radius: 34px;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 6px; border-radius: 34px;
   background: var(--glass); backdrop-filter: blur(24px) saturate(170%); border: 1px solid var(--line); box-shadow: 0 12px 36px rgba(0,0,0,.45);
 }
 .tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 4px 8px; border-radius: 28px; color: var(--muted); font-size: 12px; font-weight: 500; transition: background .2s, color .2s; }
@@ -474,7 +474,7 @@ img { color: transparent; }
 @media (min-width: 640px) {
   .dock { right: var(--side-w); padding: 0 18px 14px; }
   .dock .minibar { display: none; }
-  .tabbar { max-width: 520px; width: 100%; justify-self: center; }
+  .tabbar { max-width: 460px; width: 100%; justify-self: center; }
 }
 
 /* sign-in card */
@@ -704,3 +704,6 @@ img { color: transparent; }
 .track-rank { width: 22px; flex: none; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
 .round-btn.sm { width: 32px; height: 32px; }
 .disc-foot { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 8px 0 120px; }
+.disc-chips.s-chips { flex-wrap: wrap; padding: 12px 14px; margin: 0; }
+.explore-moods { margin-top: 8px; }
+.discover .more { white-space: nowrap; }
