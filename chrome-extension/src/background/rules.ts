@@ -9,8 +9,18 @@ const ext = () => [chrome.runtime.id];
 
 export async function installStaticRules() {
   await R.updateDynamicRules({
-    removeRuleIds: [1, 4, 10, 11, 14, 16],
+    removeRuleIds: [1, 4, 10, 11, 14, 16, 17],
     addRules: [
+      {
+        // The YouTube player inside the offscreen page: YouTube refuses to
+        // start an embed with no Referer (error 153), and refuses its own
+        // domain as the embedding site (152). A neutral site works.
+        id: 17, priority: 1,
+        action: { type: R.RuleActionType.MODIFY_HEADERS, requestHeaders: [
+          { header: 'Referer', operation: SET, value: 'https://www.google.com/' },
+        ] },
+        condition: { regexFilter: '^https://www\\.youtube(-nocookie)?\\.com/embed/', initiatorDomains: ext(), resourceTypes: [R.ResourceType.SUB_FRAME] },
+      },
       {
         // Apple Music library API only answers music.apple.com
         id: 14, priority: 1,
@@ -19,24 +29,6 @@ export async function installStaticRules() {
           { header: 'Referer', operation: SET, value: 'https://music.apple.com/' },
         ] },
         condition: { urlFilter: '||amp-api.music.apple.com/', initiatorDomains: ext(), resourceTypes: XHR_TYPES },
-      },
-      {
-        // Ad-free helper tab: block ad servers and YouTube's ad endpoints
-        // when requested from music.youtube.com.
-        id: 10, priority: 2,
-        action: { type: R.RuleActionType.BLOCK },
-        condition: {
-          regexFilter: '^https://([a-z0-9-]+\\.)?(doubleclick\\.net|googleadservices\\.com|googlesyndication\\.com|imasdk\\.googleapis\\.com)/',
-          initiatorDomains: ['music.youtube.com'],
-        },
-      },
-      {
-        id: 11, priority: 2,
-        action: { type: R.RuleActionType.BLOCK },
-        condition: {
-          regexFilter: '^https://(music|www)\\.youtube\\.com/(pagead/|api/stats/ads|ptracking|get_midroll_info)',
-          initiatorDomains: ['music.youtube.com'],
-        },
       },
       {
         // WEB_REMIX browse/search/next: look like music.youtube.com itself.

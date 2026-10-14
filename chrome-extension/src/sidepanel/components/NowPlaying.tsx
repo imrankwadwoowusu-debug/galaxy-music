@@ -1,4 +1,5 @@
 import { sized } from '../../lib/innertube';
+import { toSeconds } from '../../lib/matcher';
 import { useEffect, useRef, useState } from 'react';
 import type { PlayerState, Settings } from '../../lib/types';
 import { QueuePane } from './Queue';
@@ -78,7 +79,8 @@ function LyricsPane({ s, settings }: { s: PlayerState; settings: Settings }) {
   useEffect(() => {
     let alive = true; // a slow lookup for the previous song must not land on this one
     setLy(null);
-    if (t) getLyrics(t.title, t.artists, s.duration, t.album)
+    // the catalogue length is known up front; the player's arrives a moment later
+    if (t) getLyrics(t.title, t.artists, toSeconds(t.duration) || s.duration || undefined, t.album)
       .then((l) => alive && setLy(l))
       .catch(() => alive && setLy({ synced: null, plain: null }));
     return () => { alive = false; };
@@ -177,11 +179,6 @@ export function NowPlaying({ s, settings, onArtist }: { s: PlayerState; settings
         </div>
       )}
       <Controls s={s} />
-      {s.needsActivation && (
-        <button className="activate" onClick={() => send({ type: 'activate-helper' })}>
-          Chrome blocked autoplay. Open the player tab once and press play.
-        </button>
-      )}
       <div className="np-bottom">
         <span className="np-side">
           <button className={`icon-btn ${pane === 'lyrics' ? 'on' : ''}`} title="Lyrics" onClick={() => setPane(pane === 'lyrics' ? 'none' : 'lyrics')}><Icon name="lyrics" /></button>

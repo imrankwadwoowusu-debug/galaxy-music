@@ -3,19 +3,18 @@
 // For each track it resolves a stream through a source chain (JioSaavn 320
 // kbps match / YouTube direct via native ANDROID_VR client), plays it in the
 // offscreen <audio> element, and falls back to driving a pinned
-// music.youtube.com tab when every direct source fails.
-import { DEFAULT_SETTINGS, type PageCommand, type PageState, type PlayerState, type Settings, type Track, type UiCommand } from '../lib/types';
+// YouTube player hidden inside the offscreen page when every direct source fails
+// (v0.9: no separate YouTube Music tab is ever opened).
+import { DEFAULT_SETTINGS, type PlayerState, type Settings, type Track, type UiCommand } from '../lib/types';
 import { lastfmNowPlaying, lastfmScrobble } from '../lib/lastfm';
 import { pushRecent } from '../lib/history';
 import { directOrder, getSettings, QUALITY_KBPS } from '../lib/settings';
 import { resolveYouTube, type ResolvedStream } from '../lib/sources/youtube';
 import { bestRendition, decryptMediaUrl, resolveSaavn } from '../lib/sources/jiosaavn';
 import { getQueue, getTrackDetails, searchSongs } from '../lib/innertube';
-import { best, toSeconds } from '../lib/matcher';
+import { best, score, toSeconds } from '../lib/matcher';
 import { installStaticRules, setNativeUserAgent, syncYouTubeCookies } from './rules';
 
-const HELPER_URL = 'https://music.youtube.com/';
-const HELPER_RULE = 20; // session DNR rule: no images/fonts in the helper tab
 const START_TIMEOUT_MS = 7000;
 const PREFETCH_TTL_MS = 25 * 60 * 1000;
 let lastStream = '';
@@ -28,9 +27,6 @@ const initial: PlayerState = {
 };
 
 let state: PlayerState = { ...initial };
-let helperTabId: number | null = null;
-let expectedVideoId: string | null = null;
-let lastLoadAt = 0;
 let loadToken = 0;
 let startTimer: ReturnType<typeof setTimeout> | null = null;
 let triedSources = new Set<string>();
@@ -66,7 +62,7 @@ function log(...a: unknown[]) {
 async function restore() {
   const [local, session] = await Promise.all([
     chrome.storage.local.get(['queue', 'index', 'shuffle', 'repeat', 'volume']),
-    chrome.storage.session.get(['helperTabId', 'expectedVideoId', 'engine', 'sleepAt', 'sleepEndOfTrack']),
+    chrome.storage.session.get(['helperTabId', 'engine', 'sleepAt', 'sleepEndOfTrack']),
   ]);
   state.queue = (local.queue as Track[]) ?? [];
   state.index = (local.index as number) ?? -1;
@@ -76,19 +72,27 @@ async function restore() {
   state.track = state.queue[state.index] ?? null;
   state.videoId = state.track?.videoId ?? null;
   state.engine = (session.engine as PlayerState['engine']) ?? null;
-  helperTabId = (session.helperTabId as number) ?? null;
+  // Upgrading from v0.8: close the old pinned YouTube Music helper tab for good.
+  closeOldHelperTabs();
+  if (state.engine !== 'direct') state.engine = null;
   state.sleepAt = (session.sleepAt as number) ?? null;
   state.sleepEndOfTrack = !!session.sleepEndOfTrack;
   if (state.sleepAt) sleepTimer = setTimeout(checkSleep, Math.max(0, state.sleepAt - Date.now()) + 50);
-  expectedVideoId = (session.expectedVideoId as string) ?? null;
-  if (helperTabId != null) {
-    try { await chrome.tabs.get(helperTabId); state.helperReady = true; } catch { helperTabId = null; }
-  }
+}
+
+async function closeOldHelperTabs() {
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://music.youtube.com/*' });
+    const old = tabs.filter((t) => /[?&]bchelper=1/.test(t.url ?? t.pendingUrl ?? '')).map((t) => t.id!).filter((id) => id != null);
+    if (old.length) await chrome.tabs.remove(old);
+  } catch { /* ignore */ }
+  chrome.storage.session.remove('helperTabId').catch(() => {});
+  chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [20] }).catch(() => {});
 }
 
 function persist() {
   chrome.storage.local.set({ queue: state.queue, index: state.index, shuffle: state.shuffle, repeat: state.repeat, volume: state.volume });
-  chrome.storage.session.set({ helperTabId, expectedVideoId, engine: state.engine });
+  chrome.storage.session.set({ engine: state.engine });
 }
 
 let bTimer: ReturnType<typeof setTimeout> | null = null;
@@ -121,77 +125,35 @@ async function audio(cmd: Record<string, unknown>) {
   return chrome.runtime.sendMessage({ target: 'offscreen', ...cmd }).catch(() => null);
 }
 
-// ---------- helper tab (fallback engine) ----------
-async function sendPage(command: PageCommand, retry = true): Promise<boolean> {
-  if (helperTabId == null) return false;
-  try {
-    const ok = await chrome.tabs.sendMessage(helperTabId, { type: 'page-cmd', command });
-    if (ok) return true;
-  } catch { /* no live bridge in the tab */ }
-  if (!retry) return false;
-  // The tab's relay died (extension updated or reloaded while the tab stayed
-  // open): put a fresh one in and try once more, instead of silently losing
-  // every command until the user reloads the tab.
-  try {
-    await chrome.scripting.executeScript({ target: { tabId: helperTabId }, files: ['ytm-main.js'], world: 'MAIN' });
-    await chrome.scripting.executeScript({ target: { tabId: helperTabId }, files: ['ytm-bridge.js'] });
-    log('helper', 'relay re-injected');
-    await configureHelper();
-    return await sendPage(command, false);
-  } catch { return false; } // still loading: helper-hello replays the load
-}
-async function configureHelper() {
-  if (helperTabId == null) return;
-  const saver = (await getSettings()).tabDataSaver !== false;
-  // Never let Chrome's memory saver discard the tab that is playing music.
-  chrome.tabs.update(helperTabId, { autoDiscardable: false }).catch(() => {});
-  // Album art, avatars and fonts are wasted data in a tab nobody looks at.
-  await chrome.declarativeNetRequest.updateSessionRules({
-    removeRuleIds: [HELPER_RULE],
-    addRules: saver ? [{ id: HELPER_RULE, priority: 2, action: { type: chrome.declarativeNetRequest.RuleActionType.BLOCK },
-      condition: { tabIds: [helperTabId], resourceTypes: [chrome.declarativeNetRequest.ResourceType.IMAGE, chrome.declarativeNetRequest.ResourceType.FONT] } }] : [],
-  }).catch((e) => log('helper', 'rule', String(e)));
-  await sendPage({ cmd: 'config', dataSaver: saver }, false);
-}
-const helperUrl = (videoId?: string, at = 0) => (videoId ? `${HELPER_URL}watch?v=${encodeURIComponent(videoId)}&bchelper=1${at > 2 ? `&t=${Math.floor(at)}` : ''}` : `${HELPER_URL}?bchelper=1`);
-async function ensureHelper(videoId?: string, at = 0): Promise<boolean> {
-  if (helperTabId != null) {
-    try {
-      const tab = await chrome.tabs.get(helperTabId);
-      if (!tab.discarded) return true;
-      await chrome.tabs.reload(helperTabId); // a discarded tab has no player left
-      state.helperReady = false;
-      return false;
-    } catch { helperTabId = null; }
+// ---------- embedded YouTube player (last resort, inside BitChord) ----------
+// When no direct stream works, the song plays in a hidden YouTube player that
+// lives in BitChord's own offscreen page: same controls, same queue, no tab.
+let embedTried = new Set<string>();
+/** Another upload of the same recording (Topic channel, lyric video) when one refuses to embed. */
+async function alternateYouTube(t: Track): Promise<string | undefined> {
+  const lead = t.artists.split(/,|&/)[0].trim();
+  const target = { title: t.title, artist: t.artists, durationSec: toSeconds(t.duration), tolerance: 15 };
+  for (const q of [`${t.title.replace(/\(.*?\)|\[.*?\]/g, '')} ${lead}`, `${t.title} ${t.artists}`]) {
+    const rows = await searchSongs(q).catch(() => [] as Track[]);
+    const hit = rows.find((r) => !embedTried.has(r.videoId) && score(target, { ...r, artist: r.artists, durationSec: toSeconds(r.duration) }) > 0);
+    if (hit) return hit.videoId;
   }
-  const tab = await chrome.tabs.create({ url: helperUrl(videoId, at), pinned: true, active: false });
-  helperTabId = tab.id ?? null;
-  state.helperReady = false;
-  configureHelper();
-  persist();
-  return false;
+  return undefined;
 }
-/** Tell the helper tab what comes next, so it can switch the moment this song ends. */
-async function sendHint() {
-  if (state.engine !== 'tab' || helperTabId == null) return;
-  let next: Track | undefined;
-  if (state.repeat !== 'one' && !state.sleepEndOfTrack) next = state.queue[state.index + 1] ?? (state.repeat === 'all' ? state.queue[0] : undefined);
-  const id = next ? ytOf(next) ?? (await matchYouTube(next)) ?? null : null;
-  await sendPage({ cmd: 'hint', videoId: id }, false);
-}
-async function playInTab(t: Track) {
-  const id = ytOf(t) ?? (await matchYouTube(t));
-  if (!id) { state.engine = null; state.playing = false; state.error = "Couldn't find this song on any source"; return; }
-  state.engine = 'tab';
-  state.stream = (await getSettings()).tabDataSaver !== false ? 'YouTube Music tab · data saver' : 'YouTube Music tab';
-  expectedVideoId = id;
-  lastLoadAt = Date.now();
-  const existed = await ensureHelper(id);
-  if (existed && !(await sendPage({ cmd: 'load', videoId: id }))) {
-    // No way to reach the page: reopen it straight onto the song.
-    await chrome.tabs.update(helperTabId!, { url: helperUrl(id) }).catch(() => {});
-  }
-  sendHint();
+async function playEmbed(t: Track, token: number, startAt = 0): Promise<boolean> {
+  let id = ytOf(t) ?? (await matchYouTube(t));
+  if (!id || embedTried.has(id)) id = await alternateYouTube(t);
+  if (token !== loadToken) return true; // user moved on
+  if (!id) return false;
+  embedTried.add(id);
+  log('embed', t.title, id);
+  state.engine = 'direct';
+  state.stream = 'YouTube player · in BitChord';
+  state.resolving = false;
+  lastStream = ''; // nothing to reload by URL: errors go back through the chain
+  await audio({ cmd: 'load', embed: id, token, volume: state.volume, startAt, meta: { title: t.title, artist: t.artists, album: t.album, artwork: t.thumbnail } });
+  armStartTimer(t, token, 15000);
+  return true;
 }
 
 // ---------- songs found outside YouTube Music (Discover) ----------
@@ -322,7 +284,6 @@ async function sourceOrder(): Promise<string[]> {
 }
 
 let staleRetried = '';
-let directDownUntil = 0; // direct sources just failed: keep using the helper tab until then
 let cachedSrc = ''; // the playing stream came from the resolved cache (may have expired)
 let pendingFade = 0; // seconds of crossfade for the load in flight
 async function startDirect(t: Track, token: number, startAt = 0): Promise<void> {
@@ -341,23 +302,18 @@ async function startDirect(t: Track, token: number, startAt = 0): Promise<void> 
   if (token !== loadToken) return; // user moved on
   const fade = pendingFade; pendingFade = 0;
   if (!r) {
-    // Every direct source failed: fall back to the YouTube Music tab.
-    await audio({ cmd: 'stop' });
-    state.resolving = false;
-    if (!(await getSettings()).tabFallback) {
-      state.engine = null; state.playing = false;
+    // Every direct stream failed: play it in the YouTube player inside BitChord.
+    const ok = await playEmbed(t, token, startAt);
+    if (token !== loadToken) return;
+    if (!ok) {
+      await audio({ cmd: 'stop' });
+      state.engine = null; state.playing = false; state.resolving = false;
       state.error = `Couldn't play this song (${failReasons.join('; ') || 'no source'})`;
-      persist(); broadcast();
-      return;
-    }
-    directDownUntil = Date.now() + 10 * 60 * 1000; // stay on the tab for a while: no pause/retry dance per song
-    await playInTab(t);
-    if (failReasons.length) state.stream = `YouTube Music tab (${failReasons.join('; ')})`;
+    } else if (failReasons.length) state.stream = `YouTube player · in BitChord (${failReasons.join('; ')})`;
     persist(); broadcast();
     return;
   }
   if (r.userAgent) await setNativeUserAgent(r.userAgent);
-  if (helperTabId != null) sendPage({ cmd: 'pause' });
   state.engine = 'direct';
   lastStream = r.url;
   state.stream = describe(r);
@@ -368,7 +324,7 @@ async function startDirect(t: Track, token: number, startAt = 0): Promise<void> 
   persist(); broadcast();
 }
 
-function armStartTimer(t: Track, token: number) {
+function armStartTimer(t: Track, token: number, ms = START_TIMEOUT_MS) {
   if (startTimer) clearTimeout(startTimer);
   startTimer = setTimeout(() => {
     if (token === loadToken && !state.playing && state.position < 0.5) {
@@ -377,7 +333,7 @@ function armStartTimer(t: Track, token: number) {
       resolved.delete(t.videoId);
       startDirect(t, token);
     }
-  }, START_TIMEOUT_MS);
+  }, ms);
 }
 
 // ---------- queue ----------
@@ -389,6 +345,7 @@ async function playCurrent(fade = 0) {
   const token = ++loadToken;
   triedSources = new Set();
   failReasons = [];
+  embedTried = new Set();
   Object.assign(state, { track: t, videoId: t.videoId, position: 0, duration: 0, needsActivation: false, resolving: true, error: null, stream: null });
   pushRecent(t);
   persist(); broadcast();
@@ -396,14 +353,6 @@ async function playCurrent(fade = 0) {
   // the next one resolves (heard as the music "fluctuating" between songs).
   if (state.engine === 'direct' && !fade) audio({ cmd: 'stop' });
   resumeTried = '';
-  const order = await sourceOrder();
-  if (!order.length) { state.resolving = false; await audio({ cmd: 'stop' }); await playInTab(t); persist(); broadcast(); return; }
-  if (state.engine === 'tab' && helperTabId != null) {
-    // Direct sources failed minutes ago: keep the tab going rather than
-    // pausing it, retrying them and restarting the tab for every song.
-    if (Date.now() < directDownUntil) { state.resolving = false; await playInTab(t); persist(); broadcast(); return; }
-    sendPage({ cmd: 'pause' });
-  }
   await startDirect(t, token);
 }
 
@@ -414,7 +363,7 @@ async function advance(dir: 1 | -1, auto = false, fade = 0) {
     state.sleepEndOfTrack = false; state.playing = false;
     if (state.index + 1 < state.queue.length) state.index++;
     state.track = state.queue[state.index]; state.videoId = state.track?.videoId ?? null; state.position = 0;
-    if (state.engine === 'tab') sendPage({ cmd: 'pause' }); else audio({ cmd: 'stop' });
+    audio({ cmd: 'stop' });
     state.engine = null; persist(); broadcast(); return;
   }
   if (auto && state.repeat === 'one') return playCurrent();
@@ -459,9 +408,9 @@ function shuffleRest() {
 
 // Transport commands go to whichever engine is live
 const live = {
-  toggle: () => (state.engine === 'tab' ? sendPage({ cmd: 'toggle' }) : audio({ cmd: 'toggle' })),
-  seek: (s: number) => (state.engine === 'tab' ? sendPage({ cmd: 'seek', seconds: s }) : audio({ cmd: 'seek', seconds: s })),
-  volume: (v: number) => (state.engine === 'tab' ? sendPage({ cmd: 'volume', value: v }) : audio({ cmd: 'volume', value: v })),
+  toggle: () => audio({ cmd: 'toggle' }),
+  seek: (s: number) => audio({ cmd: 'seek', seconds: s }),
+  volume: (v: number) => audio({ cmd: 'volume', value: v }),
 };
 
 // ---------- ListenBrainz scrobbling (Settings → Account & integrations) ----------
@@ -514,7 +463,7 @@ function checkSleep() {
   log('sleep timer: pausing');
   setSleep(0);
   // Fade out over a few seconds instead of cutting off mid-word.
-  if (state.engine === 'tab') sendPage({ cmd: 'pause' }); else audio({ cmd: 'fade-pause', ms: 6000 });
+  audio({ cmd: 'fade-pause', ms: 6000 });
   broadcast();
 }
 
@@ -573,26 +522,6 @@ function onAudioEvent(m: any) {
   broadcast();
 }
 
-// ---------- events from helper tab ----------
-function onPageState(s: PageState | null) {
-  if (!s || state.engine !== 'tab') return;
-  state.helperReady = true;
-  if (s.ad) { state.stream = 'YouTube Music tab · skipping an ad'; broadcast(); return; } // never mistake an ad for a song change
-  state.playing = s.state === 1 || s.state === 3;
-  // Messages take a few ms to cross tab → background; the page stamps each
-  // reading so the position the panel shows is where the song really is.
-  const lag = s.at && s.state === 1 ? Math.min(1.5, Math.max(0, (Date.now() - s.at) / 1000)) : 0;
-  state.position = s.position + lag;
-  state.duration = s.duration || state.duration;
-  const sinceLoad = Date.now() - lastLoadAt;
-  if (s.state === 0 && s.videoId && s.videoId === expectedVideoId) { expectedVideoId = null; advance(1, true); return; }
-  if (expectedVideoId && s.videoId && s.videoId !== expectedVideoId && sinceLoad > 4000 && state.queue.length) { advance(1, true); return; }
-  maybeScrobble();
-  checkSleep();
-  state.needsActivation = sinceLoad > 5000 && (s.state === -1 || s.state === 5) && s.position < 0.5 && s.videoId === expectedVideoId;
-  broadcast();
-}
-
 const EXT_ORIGIN = chrome.runtime.getURL('');
 /** Extension pages (side panel, full-tab view, offscreen) — never a website's content script. */
 const fromExtensionPage = (s: chrome.runtime.MessageSender) => s.id === chrome.runtime.id && !!s.url?.startsWith(EXT_ORIGIN);
@@ -628,31 +557,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     await restored;
     if (msg?.type === 'audio-event') return fromExtensionPage(sender) ? onAudioEvent(msg) : undefined;
-    if (msg?.type === 'helper-hello') {
-      if (sender.tab?.id === helperTabId) {
-        state.helperReady = true;
-        configureHelper();
-        // The tab (re)loaded: pick the song up where it was, not from 0:00.
-        const at = state.position > 2 ? state.position : 0;
-        setTimeout(() => { if (expectedVideoId && state.engine === 'tab') { sendPage({ cmd: 'load', videoId: expectedVideoId, startSeconds: at || undefined }); sendHint(); } }, 1500);
-      }
-      return;
-    }
-    if (msg?.type === 'page-event') {
-      if (sender.tab?.id !== helperTabId) return;
-      if (msg.kind === 'advanced' && state.engine === 'tab') {
-        // The page already switched to the next song we hinted: just catch up.
-        const { to } = msg.payload as { to: string };
-        log('helper', 'advanced to', to);
-        expectedVideoId = to;
-        await advance(1, true);
-        return;
-      }
-      if (msg.kind === 'ended' && state.engine === 'tab') { expectedVideoId = null; await advance(1, true); return; }
-      if (msg.kind === 'state' || msg.kind === 'ready') onPageState(msg.payload);
-      if (msg.kind === 'media-key' && state.engine === 'tab') { if (msg.payload === 'next') advance(1); else previous(); }
-      return;
-    }
     const cmd = msg as UiCommand;
     // Player commands only come from BitChord's own pages, and must be well-formed.
     if (!fromExtensionPage(sender) || !cmd?.type) return;
@@ -689,35 +593,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case 'shuffle': state.shuffle = !state.shuffle; if (state.shuffle) shuffleRest(); break;
       case 'repeat': state.repeat = state.repeat === 'off' ? 'all' : state.repeat === 'all' ? 'one' : 'off'; break;
       case 'sleep': setSleep(cmd.minutes); break;
-      case 'activate-helper':
-        if (helperTabId != null) {
-          const tab = await chrome.tabs.update(helperTabId, { active: true });
-          if (tab?.windowId) chrome.windows.update(tab.windowId, { focused: true });
-        }
-        break;
       case 'open-tab': chrome.tabs.create({ url: chrome.runtime.getURL('sidepanel.html?mode=tab') }); break;
     }
-    if (state.engine === 'tab' && ['add-next', 'add-queue', 'append', 'remove-index', 'move', 'play-next-index', 'clear-upnext', 'shuffle', 'repeat', 'sleep'].includes(cmd?.type)) sendHint();
     persist();
     broadcast();
     sendResponse(state);
   })();
   return true;
-});
-
-// Chrome swaps a tab's id when it prerenders or restores it.
-chrome.tabs.onReplaced.addListener((added, removed) => {
-  if (removed === helperTabId) { helperTabId = added; persist(); configureHelper(); }
-});
-chrome.storage.onChanged.addListener((ch) => { if (ch.settings && helperTabId != null) configureHelper(); });
-
-chrome.tabs.onRemoved.addListener((tabId) => {
-  if (tabId === helperTabId) {
-    helperTabId = null; state.helperReady = false;
-    chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [HELPER_RULE] }).catch(() => {});
-    if (state.engine === 'tab') { state.playing = false; state.engine = null; }
-    persist(); broadcast();
-  }
 });
 
 chrome.commands.onCommand.addListener(async (command) => {

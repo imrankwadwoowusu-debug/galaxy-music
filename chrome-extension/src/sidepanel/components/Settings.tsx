@@ -263,21 +263,11 @@ function SourcesPage({ onBack }: { onBack: () => void }) {
         <div className="s-row">
           <div className="s-row-main">
             <span className="src-num">{s.sources.length + 1}</span>
-            <span className="s-icon"><Icon name="external" size={20} /></span>
-            <span className="s-text"><span className="s-title">YouTube Music tab</span><span className="s-sub">Fallback · plays through a pinned music.youtube.com tab</span></span>
-            <Toggle on={s.tabFallback} onChange={(v) => save({ tabFallback: v })} label="YouTube Music tab fallback" />
+            <span className="s-icon"><Icon name="play" size={20} /></span>
+            <span className="s-text"><span className="s-title">YouTube player</span><span className="s-sub">Last resort · plays inside BitChord, never in a separate tab</span></span>
+            <span className="s-value">Always on</span>
           </div>
         </div>
-        {s.tabFallback && (
-          <div className="s-row">
-            <div className="s-row-main">
-              <span className="src-num" />
-              <span className="s-icon"><Icon name="wifi" size={20} /></span>
-              <span className="s-text"><span className="s-title">Tab data saver</span><span className="s-sub">Audio-only Song version, smallest video stream, no images in the tab</span></span>
-              <Toggle on={s.tabDataSaver !== false} onChange={(v) => save({ tabDataSaver: v })} label="Tab data saver" />
-            </div>
-          </div>
-        )}
       </Group>
     </Page>
   );
@@ -371,7 +361,7 @@ export function SettingsPage({ me, onClose, initial }: { me: AccountInfo | null;
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   };
   const quality = { high: 'High', normal: 'Normal', low: 'Data saver' } as const;
-  const srcSummary = [...s.sources.filter((x) => x === 'youtube' || s.jiosaavn).map((x) => (x === 'jiosaavn' ? 'JioSaavn' : 'YouTube Music')), ...(s.tabFallback ? ['Tab'] : [])].join(' → ');
+  const srcSummary = [...s.sources.filter((x) => x === 'youtube' || s.jiosaavn).map((x) => (x === 'jiosaavn' ? 'JioSaavn' : 'YouTube Music')), 'YouTube player'].join(' → ');
 
   return (
     <div className="settings-layer">

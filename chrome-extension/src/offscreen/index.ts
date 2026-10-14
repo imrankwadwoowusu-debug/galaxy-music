@@ -9,6 +9,7 @@
 // header for the extension). If that fails, or the AudioContext can't run,
 // the slot plays as a plain element and only the equalizer is skipped.
 import { EQ_BANDS } from '../lib/types';
+import { embedActive, embedCommand, embedLoad, embedStop, embedToken } from './embed';
 
 interface Slot { el: HTMLAudioElement; token: number; gain: GainNode | null; src: MediaElementAudioSourceNode | null; ramp: ReturnType<typeof setInterval> | null; vol: number; metaReady: boolean; plainRetry: boolean }
 
@@ -114,11 +115,12 @@ function setMeta(meta?: { title: string; artist: string; album?: string; artwork
 }
 try {
   const ms = navigator.mediaSession;
-  ms.setActionHandler('play', () => active?.el.play());
-  ms.setActionHandler('pause', () => active?.el.pause());
-  ms.setActionHandler('nexttrack', () => chrome.runtime.sendMessage({ type: 'audio-event', kind: 'media-next', token: active?.token ?? -1 }));
-  ms.setActionHandler('previoustrack', () => chrome.runtime.sendMessage({ type: 'audio-event', kind: 'media-prev', token: active?.token ?? -1 }));
-  ms.setActionHandler('seekto', (d) => { if (d.seekTime != null && active) active.el.currentTime = d.seekTime; });
+  const tok = () => (embedActive() ? embedToken() : active?.token ?? -1);
+  ms.setActionHandler('play', () => (embedActive() ? embedCommand('play', {}) : active?.el.play()));
+  ms.setActionHandler('pause', () => (embedActive() ? embedCommand('pause', {}) : active?.el.pause()));
+  ms.setActionHandler('nexttrack', () => chrome.runtime.sendMessage({ type: 'audio-event', kind: 'media-next', token: tok() }));
+  ms.setActionHandler('previoustrack', () => chrome.runtime.sendMessage({ type: 'audio-event', kind: 'media-prev', token: tok() }));
+  ms.setActionHandler('seekto', (d) => { if (d.seekTime == null) return; if (embedActive()) embedCommand('seek', { seconds: d.seekTime }); else if (active) active.el.currentTime = d.seekTime; });
 } catch { /* ignore */ }
 
 interface LoadMsg { url: string; token: number; volume?: number; startAt?: number; fade?: number; meta?: { title: string; artist: string; album?: string; artwork?: string } }
@@ -160,6 +162,22 @@ async function load(msg: LoadMsg, plain = false) {
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg?.target !== 'offscreen' || sender.id !== chrome.runtime.id || sender.tab) return; // only the service worker drives audio
   const a = active?.el;
+  if (msg.cmd === 'load' && msg.embed) {
+    // Hand over to the YouTube player: silence whatever <audio> was playing.
+    const s = active; active = null;
+    if (s) { s.token = -1; if (!s.el.paused && s.vol > 0.05) fade(s, 0, 150).then(() => kill(s)); else kill(s); }
+    setMeta(msg.meta);
+    embedLoad(msg, (kind, extra) => { chrome.runtime.sendMessage({ type: 'audio-event', kind, volume: Math.round(target * 100), ...extra }).catch(() => {}); });
+    reply?.({ ok: true, embed: true });
+    return;
+  }
+  if (msg.cmd === 'load' || msg.cmd === 'stop') embedStop();
+  else if (embedActive() && ['play', 'pause', 'toggle', 'seek', 'volume', 'fade-pause'].includes(msg.cmd)) {
+    if (msg.cmd === 'volume') target = msg.value / 100;
+    embedCommand(msg.cmd, msg);
+    reply?.({ ok: true, embed: true });
+    return;
+  }
   switch (msg.cmd) {
     // v0.8: no equalizer, so songs play as plain elements: no Web Audio graph,
     // no CORS-mode fetch, less CPU. (The graph code stays for a future EQ.)

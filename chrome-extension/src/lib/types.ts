@@ -54,7 +54,7 @@ export interface PlayerState {
   index: number;
   shuffle: boolean;
   repeat: 'off' | 'all' | 'one';
-  engine: 'direct' | 'tab' | null; // offscreen <audio> or helper YouTube Music tab
+  engine: 'direct' | null; // offscreen page: <audio> or the embedded YouTube player
   stream: string | null; // "Stats for nerds": e.g. "JioSaavn · 320 kbps AAC"
   resolving: boolean;
   error: string | null;
@@ -73,7 +73,8 @@ export interface Settings {
   // Sources (BitChord's "Sources, tried in this order")
   sources: DirectSource[]; // order
   jiosaavn: boolean; // enabled
-  tabFallback: boolean; // YouTube Music tab as last resort
+  /** @deprecated v0.9: the YouTube Music tab is gone (embedded player instead) */
+  tabFallback: boolean;
   tabDataSaver: boolean; // helper tab: smallest video, Song mode, no images
   quality: Quality;
   // Accounts
@@ -142,7 +143,6 @@ export type UiCommand =
   | { type: 'volume'; value: number }
   | { type: 'shuffle' }
   | { type: 'repeat' }
-  | { type: 'activate-helper' }
   | { type: 'sleep'; minutes: number } // 0 = off, -1 = end of this song
   | { type: 'open-tab' };
 

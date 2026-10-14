@@ -1,7 +1,7 @@
 // Lyrics, ported from BitChord's LyricsRepository: every enabled provider is
 // asked at the same time, answers are taken in the user's priority order,
 // and (optionally) a word-timed answer beats a line-timed one.
-import { best, toSeconds } from './matcher';
+import { titleParts } from './matcher';
 
 export interface LyricWord { t: number; d: number; text: string } // seconds
 export interface LyricLine { time: number; end?: number; text: string; words?: LyricWord[] }
@@ -27,11 +27,13 @@ interface Query { title: string; artist: string; album?: string; duration?: numb
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const TIMEOUT = 9000;
-async function getJson(url: string, init?: RequestInit): Promise<any> {
+async function getJson(url: string, init?: RequestInit, retry = true): Promise<any> {
   const ctl = new AbortController();
   const id = setTimeout(() => ctl.abort(), TIMEOUT);
   try {
     const r = await fetch(url, { ...init, signal: ctl.signal, credentials: 'omit' });
+    // "server busy" (LRCLIB, PaxSenix) is usually gone a moment later
+    if ((r.status === 429 || r.status === 503) && retry) { clearTimeout(id); await new Promise((ok) => setTimeout(ok, 700)); return getJson(url, init, false); }
     if (!r.ok) return null;
     return await r.json();
   } catch { return null; } finally { clearTimeout(id); }
@@ -56,8 +58,56 @@ export function parseLrc(lrc: string): LyricLine[] {
   return out.sort((a, b) => a.time - b.time);
 }
 
+// ---------- verification ----------
+// Root cause of "the same / random lyrics on different songs": providers answer
+// a fuzzy search with their closest hit, and we used to take it unchecked
+// (KuGou's first candidate, LRCLIB's first search row, whatever LyricsPlus or
+// Musixmatch returned, Musixmatch's decoy lyrics). Every answer is now checked
+// against the playing track's title, artist, language and length before use.
+const LANGS = ['telugu', 'tamil', 'hindi', 'kannada', 'malayalam', 'marathi', 'bengali', 'punjabi', 'bhojpuri', 'gujarati', 'odia', 'english', 'spanish', 'korean', 'japanese'];
+const normA = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+const artistNames = (s: string) => normA(s).split(/,|&| and | x | feat\.? | ft\.? |\/|;|、|，/).map((a) => a.replace(/[^\p{L}\p{N} ]/gu, '').trim()).filter((a) => a.length > 1);
+const langOf = (s: string) => LANGS.find((l) => new RegExp(`\\b${l}\\b`, 'i').test(s));
+const words = (s: string) => new Set(titleParts(s).words.split(' ').filter(Boolean));
+
+export interface Candidate { title: string; artist?: string; durationSec?: number }
+/** Why a provider's answer was rejected, or '' when it belongs to this track. */
+export function mismatch(q: { title: string; artist: string; duration?: number }, c: Candidate): string {
+  const a = titleParts(q.title).words, b = titleParts(c.title).words;
+  if (!b) return 'no title';
+  let titleOk = a === b || (a.length >= 4 && b.length >= 4 && (a.includes(b) || b.includes(a)));
+  if (!titleOk) {
+    const A = words(q.title), B = words(c.title);
+    const shared = [...A].filter((w) => B.has(w)).length;
+    titleOk = shared / Math.max(A.size, B.size, 1) >= 0.67;
+  }
+  if (!titleOk) return `title "${c.title}"`;
+  // A Telugu and a Tamil version of a film song share a title but not lyrics.
+  const la = langOf(q.title), lb = langOf(c.title);
+  if (la && lb && la !== lb) return `language ${lb}`;
+  // Instrumentals have no lyrics; a remix or live take keeps them.
+  if (/instrumental|karaoke/i.test(c.title) !== /instrumental|karaoke/i.test(q.title)) return 'instrumental';
+  const dur = q.duration && c.durationSec ? Math.abs(q.duration - c.durationSec) : null;
+  if (dur != null && dur > 15) return `length ${Math.round(c.durationSec!)}s`;
+  if (c.artist) {
+    const ta = artistNames(q.artist), ca = artistNames(c.artist);
+    const same = ta.some((x) => ca.some((y) => x === y || (x.length > 3 && y.length > 3 && (x.includes(y) || y.includes(x)))));
+    // Credits differ between catalogues; an exact-length match vouches for it.
+    if (ta.length && ca.length && !same && !(dur != null && dur <= 2)) return `artist "${c.artist}"`;
+  }
+  return '';
+}
+/** Synced lines that run well past the song's end belong to another song. */
+function fitsLength(lines: LyricLine[] | null, duration?: number): boolean {
+  if (!lines?.length || !duration) return true;
+  return lines[lines.length - 1].time <= duration + 10;
+}
+const hms = (s?: string) => { const p = (s ?? '').split(':').map(Number); return p.length && !p.some(isNaN) ? p.reduce((a, x) => a * 60 + x, 0) : undefined; };
+let reject = (_src: string, _why: string) => {};
+
 const clean = (s: string) => s.replace(/\(.*?(official|video|audio|lyric|visuali[sz]er).*?\)|\[.*?\]/gi, '').trim();
-const titleOnly = (s: string) => clean(s).replace(/\s*\((from|feat|ft)[^)]*\)/gi, '').trim();
+// Search with the title proper: "Yeshanagula (From "The Paradise") (Telugu)" -> "Yeshanagula".
+const titleOnly = (s: string) => clean(s).replace(/\s*[([][^)\]]*[)\]]/g, '').replace(/\s+[-|]\s+(from|feat|ft)\b.*$/i, '').trim() || clean(s);
 const firstArtist = (a: string) => a.split(/,|&| x | feat\.? /i)[0].trim();
 
 // ---------- providers ----------
@@ -69,6 +119,9 @@ async function lyricsPlus(q: Query): Promise<Lyrics | null> {
   for (const h of LYRICSPLUS_HOSTS) {
     const d = await getJson(`${h}/v2/lyrics/get?${p}`);
     if (!d?.lyrics?.length) continue;
+    const m = d.metadata ?? {};
+    const why = m.title ? mismatch(q, { title: m.title, artist: m.artist, durationSec: hms(m.totalDuration) }) : '';
+    if (why) { reject('lyricsplus', why); return null; }
     const word = d.type === 'Word' || d.type === 'Syllable';
     const lines: LyricLine[] = d.lyrics.map((l: any) => ({
       time: l.time / 1000,
@@ -76,16 +129,21 @@ async function lyricsPlus(q: Query): Promise<Lyrics | null> {
       text: l.text,
       words: word && l.syllabus?.length ? l.syllabus.map((s: any) => ({ t: s.time / 1000, d: s.duration / 1000, text: s.text })) : undefined,
     }));
+    if (!fitsLength(lines, q.duration)) { reject('lyricsplus', 'runs past the song'); return null; }
     return { synced: lines, plain: null, wordSynced: word };
   }
   return null;
+}
+
+function pick<T extends Candidate>(q: Query, list: T[]): T | null {
+  return list.find((c) => !mismatch(q, c)) ?? null;
 }
 
 async function itunesId(q: Query): Promise<string | null> {
   for (const country of ['in', 'us']) {
     const d = await getJson(`https://itunes.apple.com/search?${new URLSearchParams({ term: `${titleOnly(q.title)} ${firstArtist(q.artist)}`, entity: 'song', limit: '10', country })}`);
     const rows: { id: string; title: string; artist: string; durationSec: number }[] = (d?.results ?? []).map((r: any) => ({ id: String(r.trackId), title: r.trackName, artist: r.artistName, durationSec: Math.round((r.trackTimeMillis ?? 0) / 1000) }));
-    const hit = best({ title: q.title, artist: q.artist, durationSec: q.duration }, rows);
+    const hit = pick(q, rows.map((r) => ({ ...r, durationSec: r.durationSec || undefined })));
     if (hit) return hit.id;
   }
   return null;
@@ -101,6 +159,7 @@ async function paxSenix(q: Query): Promise<Lyrics | null> {
     const words = parts.map((w, i) => ({ t: w.timestamp / 1000, d: w.duration / 1000, text: w.text + (w.part || i === parts.length - 1 ? '' : ' ') }));
     return { time: l.timestamp / 1000, end: l.endtime / 1000, text: words.map((w) => w.text).join('').trim(), words: word ? words : undefined };
   });
+  if (!fitsLength(lines, q.duration)) { reject('paxsenix', 'runs past the song'); return null; }
   return { synced: lines, plain: null, wordSynced: word };
 }
 
@@ -108,25 +167,40 @@ async function kugou(q: Query): Promise<Lyrics | null> {
   const p = new URLSearchParams({ ver: '1', man: 'yes', client: 'pc', keyword: `${firstArtist(q.artist)} - ${titleOnly(q.title)}` });
   if (q.duration) p.set('duration', String(Math.round(q.duration * 1000)));
   const s = await getJson(`https://lyrics.kugou.com/search?${p}`);
-  const c = s?.candidates?.[0];
+  const cands: any[] = s?.candidates ?? [];
+  const c = cands.find((x) => {
+    const why = mismatch(q, { title: x.song ?? '', artist: x.singer, durationSec: x.duration ? x.duration / 1000 : undefined });
+    if (why) reject('kugou', why);
+    return !why;
+  });
   if (!c) return null;
   const d = await getJson(`https://lyrics.kugou.com/download?${new URLSearchParams({ fmt: 'lrc', charset: 'utf8', client: 'pc', ver: '1', id: c.id, accesskey: c.accesskey })}`);
   if (!d?.content) return null;
   const lrc = new TextDecoder().decode(Uint8Array.from(atob(d.content), (ch) => ch.charCodeAt(0)));
-  const lines = parseLrc(lrc).filter((l, i) => !(i < 4 && /(lyrics|composed|作词|作曲|by[:：])/i.test(l.text)) && !(i === 0 && l.text.includes(' - ')));
+  // KuGou puts credits ("作词：", "Produced by：…") and "Artist - Title" in the first lines.
+  const credit = /^(作词|作曲|编曲|制作|监制|混音|和声|吉他|贝斯|鼓|母带|出品|发行|op|sp|lyrics?|composed|composer|written|arranged|produced|producer|mixed|mastered)[^:：]{0,24}[:：]|\bby\s*[:：]/i;
+  const lines = parseLrc(lrc).filter((l, i) => !(i < 12 && credit.test(l.text)) && !(i === 0 && l.text.includes(' - ')));
+  // ...and any other "Role：Name" block at the top (Drums：…, Guitar：…).
+  for (let n = 0; n < 15 && lines.length && /^[\p{L} /&.'-]{1,24}[:：]\s*\S/u.test(lines[0].text); n++) lines.shift();
+  if (!fitsLength(lines, q.duration)) { reject('kugou', 'runs past the song'); return null; }
   return lines.length ? { synced: lines, plain: null } : null;
 }
 
 async function lrclib(q: Query): Promise<Lyrics | null> {
   const p = new URLSearchParams({ track_name: clean(q.title), artist_name: firstArtist(q.artist) });
   if (q.duration) p.set('duration', String(Math.round(q.duration)));
+  const asCand = (x: any): Candidate => ({ title: x.trackName ?? '', artist: x.artistName, durationSec: x.duration });
   let d = await getJson(`https://lrclib.net/api/get?${p}`);
+  if (d) { const why = mismatch(q, asCand(d)); if (why) { reject('lrclib', why); d = null; } }
   if (!d) {
-    const list: any[] = (await getJson(`https://lrclib.net/api/search?${new URLSearchParams({ q: `${titleOnly(q.title)} ${firstArtist(q.artist)}` })}`)) ?? [];
-    d = list.find((x) => x.syncedLyrics) ?? list[0];
+    const list: any[] = (await getJson(`https://lrclib.net/api/search?${new URLSearchParams({ track_name: titleOnly(q.title), artist_name: firstArtist(q.artist) })}`)) ?? [];
+    const ok = list.filter((x) => !mismatch(q, asCand(x)) && !x.instrumental);
+    d = ok.find((x) => x.syncedLyrics) ?? ok.find((x) => x.plainLyrics) ?? null;
   }
-  if (!d) return null;
-  return { synced: d.syncedLyrics ? parseLrc(d.syncedLyrics) : null, plain: d.plainLyrics ?? null };
+  if (!d || d.instrumental) return null;
+  const synced = d.syncedLyrics ? parseLrc(d.syncedLyrics) : null;
+  if (!fitsLength(synced, q.duration)) { reject('lrclib', 'runs past the song'); return null; }
+  return { synced, plain: d.plainLyrics ?? null };
 }
 
 let mxmToken: string | null = null;
@@ -153,7 +227,10 @@ async function musixmatch(q: Query): Promise<Lyrics | null> {
   const calls = d?.message?.body?.macro_calls;
   const lrc = calls?.['track.subtitles.get']?.message?.body?.subtitle_list?.[0]?.subtitle?.subtitle_body;
   if (d?.message?.header?.status_code === 401) { mxmToken = null; return null; }
-  if (lrc) { const lines = parseLrc(lrc); return looksFake(lines) ? null : { synced: lines, plain: null }; }
+  const tr = calls?.['matcher.track.get']?.message?.body?.track;
+  if (tr) { const why = mismatch(q, { title: tr.track_name ?? '', artist: tr.artist_name, durationSec: tr.track_length || undefined }); if (why) { reject('musixmatch', why); return null; } }
+  else if (lrc || calls?.['track.lyrics.get']?.message?.body?.lyrics) { reject('musixmatch', 'no track info'); return null; }
+  if (lrc) { const lines = parseLrc(lrc); return looksFake(lines) || !fitsLength(lines, q.duration) ? null : { synced: lines, plain: null }; }
   const plain = calls?.['track.lyrics.get']?.message?.body?.lyrics?.lyrics_body;
   return plain ? { synced: null, plain } : null;
 }
@@ -162,7 +239,7 @@ async function genius(q: Query): Promise<Lyrics | null> {
   const s = await getJson(`https://genius.com/api/search/multi?${new URLSearchParams({ q: `${titleOnly(q.title)} ${firstArtist(q.artist)}` })}`);
   const hits: any[] = (s?.response?.sections ?? []).flatMap((x: any) => x.hits ?? []).filter((h: any) => h.type === 'song');
   const rows: { url: string; title: string; artist: string }[] = hits.map((h: any) => ({ url: h.result.url, title: h.result.title, artist: h.result.primary_artist?.name ?? '' }));
-  const hit = best({ title: q.title, artist: q.artist }, rows);
+  const hit = pick(q, rows);
   if (!hit) return null;
   const html = await getText(hit.url);
   if (!html) return null;
@@ -194,10 +271,11 @@ const cache = new Map<string, Lyrics>();
 export const lyricsDebug: string[] = [];
 
 export async function getLyrics(title: string, artist: string, duration?: number, album?: string): Promise<Lyrics> {
-  const key = `${title}|${artist}`;
+  const key = `${title}|${artist}|${Math.round(duration ?? 0)}`;
   if (cache.has(key)) return cache.get(key)!;
   const prefs = await getLyricsPrefs();
-  const q: Query = { title, artist, album, duration: duration && duration > 0 ? duration : toSeconds(undefined) };
+  const q: Query = { title, artist, album, duration: duration && duration > 0 ? duration : undefined };
+  reject = (src, why) => { lyricsDebug.push(`${src}: rejected (${why})`); if (lyricsDebug.length > 40) lyricsDebug.shift(); };
   const order = prefs.order.filter((id) => prefs.enabled.includes(id));
   // Ask everyone at once; take answers in priority order.
   const started = order.map((id) => {

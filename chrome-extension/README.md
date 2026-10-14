@@ -186,3 +186,13 @@ Accessibility
 - Settings rows, account switcher, lyrics sources, transfer pickers, queue rows, top result and artist "About" work with Enter/Space; Space no longer toggles music while a control is focused. Sources and lyrics sources reorder with Alt+↑/↓. Cards no longer nest a button inside a button.
 Speed
 - Rows and cards are memoised and the app's callbacks are stable, so player ticks no longer re-render every list. Long playlists render 100 songs at a time. Lyrics tick at frame rate only for the line being sung. Cache writes no longer read all of storage. The user's own YouTube Music tabs no longer message BitChord every second.
+
+## v0.9.0 (14 Oct 2026): correct lyrics, and no more YouTube Music tab
+Lyrics
+- Root cause of identical/random lyrics: Musixmatch answers unauthorised clients with the same decoy text ("Wob gopini den…") for every song, and KuGou, LRCLIB and LyricsPlus answers were taken without checking which song they were for.
+- Every provider's answer is now verified against the playing track: title proper (bracketed film/language tags ignored), artist overlap, language version (a Tamil version never shows Telugu lyrics), instrumental, and length within 15 s. Synced lyrics that run past the song's end are dropped. KuGou/LRCLIB pick the first *matching* candidate instead of the first one.
+- The panel passes the catalogue length up front, searches use the title proper, "server busy" answers are retried once, and KuGou credit lines (Drums：…, 作词：…) are stripped.
+- Unknown songs show "No lyrics found" instead of someone else's lyrics.
+Playback
+- The pinned music.youtube.com helper tab is gone (and closed on upgrade). When no direct stream (JioSaavn, YouTube) works, the song plays in a hidden YouTube player inside BitChord's own offscreen page, driven over YouTube's postMessage protocol: play/pause, seek, volume, sleep fade, track changes, media keys and progress all go through the usual controls. If a video refuses embedding, another upload of the same recording is tried.
+- DNR rule 17 gives the embed a Referer (YouTube refuses an embed without one); the YouTube Music content scripts and the helper-tab ad rules are removed.
