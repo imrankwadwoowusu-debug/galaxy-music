@@ -131,3 +131,23 @@ Improved:
   - "jsv:" songs use their own JioSaavn stream.
   - "itm:" and "dz:" songs are matched to the same recording on YouTube Music (title, artist, runtime within 8 s), and the normal source chain takes over from there.
 - **Fix**: a stream that failed to decode could loop between the cached and fresh copy of the same source. The cache now skips sources already tried, and an expired link is retried only once.
+
+## v0.7.1 (14 Oct 2026): a leaner, better-synced YouTube Music tab
+- **Data saver** (Settings → Sources → Tab data saver, on by default):
+  - The helper tab asks for the smallest video stream and switches to the audio-only "Song" version when YouTube Music has one.
+  - It blocks images and fonts in that tab only, and stops painting video.
+  - Your own YouTube Music tabs aren't affected.
+- **Instant hand-off**:
+  - The extension tells the tab which song comes next.
+  - At the end of a song the tab switches by itself a beat before the end, so YouTube Music's autoplay no longer plays a few seconds of the wrong song.
+  - The duplicate "ended" report after a switch is ignored, so no song gets skipped.
+- **Sync**:
+  - The page reports on media events (play, pause, seek, buffering, end) and answers every command at once. Before, it polled twice a second.
+  - Readings are timestamped and the background corrects for message lag.
+  - The heartbeat dropped to 1/s.
+- **Self-healing**:
+  - If the tab's relay died after an extension update, the background re-injects it instead of losing every command.
+  - A discarded tab is reloaded onto the song, and the tab is marked non-discardable.
+  - After a reload, the song resumes where it was instead of from 0:00.
+  - Tab id swaps are followed.
+- **Steady**: once direct sources fail, the tab is kept for 10 minutes. It no longer pauses, retries direct, and restarts the tab on every song.

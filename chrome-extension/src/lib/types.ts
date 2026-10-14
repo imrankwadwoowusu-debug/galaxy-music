@@ -74,6 +74,7 @@ export interface Settings {
   sources: DirectSource[]; // order
   jiosaavn: boolean; // enabled
   tabFallback: boolean; // YouTube Music tab as last resort
+  tabDataSaver: boolean; // helper tab: smallest video, Song mode, no images
   quality: Quality;
   // Accounts
   useAccount: boolean;
@@ -109,7 +110,7 @@ export interface Settings {
   sourceOrder?: SourceOrder;
 }
 export const DEFAULT_SETTINGS: Settings = {
-  sources: ['jiosaavn', 'youtube'], jiosaavn: true, tabFallback: true, quality: 'high',
+  sources: ['jiosaavn', 'youtube'], jiosaavn: true, tabFallback: true, tabDataSaver: true, quality: 'high',
   useAccount: true, defaultAccount: 'youtube-music', authUser: 0, listenbrainzToken: '',
   autoRadio: true, hideVolume: false, crossfade: 0,
   eqOn: false, eqPreset: 'Flat', eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -143,7 +144,10 @@ export type UiCommand =
   | { type: 'open-tab' };
 
 export type PageCommand =
-  | { cmd: 'load'; videoId: string }
+  | { cmd: 'load'; videoId: string; startSeconds?: number }
+  | { cmd: 'hint'; videoId: string | null }
+  | { cmd: 'config'; dataSaver: boolean }
+  | { cmd: 'ping' }
   | { cmd: 'play' }
   | { cmd: 'pause' }
   | { cmd: 'toggle' }
@@ -160,6 +164,10 @@ export interface PageState {
   author?: string;
   /** an ad is on screen (the helper tab skips it) */
   ad?: boolean;
+  /** Date.now() when read, and what triggered it */
+  at?: number;
+  event?: string;
+  quality?: string;
 }
 
 export const EQ_BANDS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];

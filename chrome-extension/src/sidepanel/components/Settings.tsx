@@ -245,6 +245,16 @@ function SourcesPage({ onBack }: { onBack: () => void }) {
             <Toggle on={s.tabFallback} onChange={(v) => save({ tabFallback: v })} label="YouTube Music tab fallback" />
           </div>
         </div>
+        {s.tabFallback && (
+          <div className="s-row">
+            <div className="s-row-main">
+              <span className="src-num" />
+              <span className="s-icon"><Icon name="wifi" size={20} /></span>
+              <span className="s-text"><span className="s-title">Tab data saver</span><span className="s-sub">Audio-only Song version, smallest video stream, no images in the tab</span></span>
+              <Toggle on={s.tabDataSaver !== false} onChange={(v) => save({ tabDataSaver: v })} label="Tab data saver" />
+            </div>
+          </div>
+        )}
       </Group>
     </Page>
   );
