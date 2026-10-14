@@ -9,6 +9,9 @@ import { AUTH_COOKIE_NAMES, appleMusicSignedIn, googleAccounts, openSignIn, yout
 import type { AccountInfo } from '../../lib/innertube';
 import { DEFAULT_LYRICS_ORDER, getLyricsPrefs, LYRICS_SOURCES, setLyricsPrefs, type LyricsPrefs, type LyricsSourceId } from '../../lib/lyrics';
 import { TransferPage } from './Transfer';
+import { EqPane } from './NowPlaying';
+import { useSettings } from '../hooks';
+import { lastfmFinishAuth, lastfmStartAuth } from '../../lib/lastfm';
 import { Icon } from './Icon';
 import { LogoMark } from './Logo';
 
@@ -103,6 +106,29 @@ function AccountsPage({ onBack }: { onBack: () => void }) {
   const [google, setGoogle] = useState<GoogleAccount[] | null>(null);
   const [apple, setApple] = useState<boolean | null>(null);
   const [lbOpen, setLbOpen] = useState(false);
+  const [fmOpen, setFmOpen] = useState(false);
+  const [fmKey, setFmKey] = useState('');
+  const [fmSecret, setFmSecret] = useState('');
+  const [fmToken, setFmToken] = useState('');
+  const [fmErr, setFmErr] = useState('');
+  const fmStart = async () => {
+    setFmErr('');
+    try {
+      const k = fmKey.trim(), sec = fmSecret.trim();
+      const { token, url } = await lastfmStartAuth(k, sec);
+      setFmToken(token);
+      await save({ lastfmKey: k, lastfmSecret: sec });
+      chrome.tabs.create({ url });
+    } catch (e: any) { setFmErr(String(e?.message ?? e)); }
+  };
+  const fmFinish = async () => {
+    setFmErr('');
+    try {
+      const { session, user } = await lastfmFinishAuth(s.lastfmKey, s.lastfmSecret, fmToken);
+      await save({ lastfmSession: session, lastfmUser: user });
+      setFmOpen(false); setFmToken('');
+    } catch (e: any) { setFmErr(/14|unauthori[sz]ed/i.test(String(e?.message)) ? 'Approve BitChord on the Last.fm tab first, then tap Done.' : String(e?.message ?? e)); }
+  };
   const [lbDraft, setLbDraft] = useState('');
   const load = useCallback(() => {
     youtubeMusicStatus().then(setYtm); googleAccounts().then(setGoogle); appleMusicSignedIn().then(setApple);
@@ -147,7 +173,26 @@ function AccountsPage({ onBack }: { onBack: () => void }) {
         <Row icon={<AppleLogo />} title="Apple Music" sub={apple === null ? 'Checking…' : apple ? 'Linked' : 'Tap to sign in'} onClick={apple ? undefined : () => openSignIn('apple-music')} value={apple ? 'Linked' : undefined} />
       </Group>
 
-      <Group label="Scrobbling" foot="Scrobble your listens to ListenBrainz.">
+      <Group label="Scrobbling" foot="Scrobble your listens to ListenBrainz and Last.fm. Last.fm uses your own free API key from last.fm/api/account/create.">
+        <Row icon="last-fm" title="Last.fm" sub={s.lastfmSession ? `Scrobbling as ${s.lastfmUser}` : 'Connect with your API key'}
+          toggle={{ on: !!s.lastfmSession, set: (v) => { if (v) { setFmKey(s.lastfmKey); setFmSecret(s.lastfmSecret); setFmToken(''); setFmErr(''); setFmOpen(true); } else save({ lastfmSession: '', lastfmUser: '' }); } }} />
+        {fmOpen && (
+          <div className="s-row">
+            {!fmToken ? (
+              <form className="token-form col" onSubmit={(e) => { e.preventDefault(); if (fmKey.trim() && fmSecret.trim()) fmStart(); }}>
+                <input autoFocus placeholder="API key" value={fmKey} onChange={(e) => setFmKey(e.target.value)} />
+                <input type="password" placeholder="Shared secret" value={fmSecret} onChange={(e) => setFmSecret(e.target.value)} />
+                <button className="pill white sm" type="submit">Connect</button>
+              </form>
+            ) : (
+              <div className="token-form col">
+                <span className="s-sub">Approve BitChord on the Last.fm tab that just opened, then come back.</span>
+                <button className="pill white sm" onClick={fmFinish}>Done</button>
+              </div>
+            )}
+            {fmErr && <p className="s-err">{fmErr}</p>}
+          </div>
+        )}
         <Row icon="cloud" title="ListenBrainz" sub={s.listenbrainzToken ? 'Scrobbling every song you play' : 'Enter a token to enable'}
           toggle={{ on: !!s.listenbrainzToken, set: (v) => { if (v) { setLbDraft(''); setLbOpen(true); } else save({ listenbrainzToken: '' }); } }} />
         {lbOpen && (
@@ -250,9 +295,14 @@ function LyricsSourcesSheet({ onClose }: { onClose: () => void }) {
 }
 
 // ---------- main Settings ----------
+function EqPage({ onBack }: { onBack: () => void }) {
+  const live = useSettings();
+  return <Page title="Equalizer" onBack={onBack}><div className="s-card eq-card"><EqPane settings={live} /></div></Page>;
+}
+
 export function SettingsPage({ me, onClose, initial }: { me: AccountInfo | null; onClose: () => void; initial?: 'transfer' }) {
   const [s, save] = useStoreSettings();
-  const [page, setPage] = useState<'main' | 'accounts' | 'sources' | 'transfer'>(initial ?? 'main');
+  const [page, setPage] = useState<'main' | 'accounts' | 'sources' | 'transfer' | 'eq'>(initial ?? 'main');
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [lyricsSummary, setLyricsSummary] = useState('');
   const [toast, setToast] = useState('');
@@ -270,7 +320,7 @@ export function SettingsPage({ me, onClose, initial }: { me: AccountInfo | null;
   const exportData = async () => {
     const all = await chrome.storage.local.get(null);
     const data = Object.fromEntries(Object.entries(all).filter(([k]) => !k.startsWith('c:') && k !== 'visitorData'));
-    if ((data.settings as Settings | undefined)?.listenbrainzToken) (data.settings as Settings).listenbrainzToken = '';
+    if (data.settings) Object.assign(data.settings as Settings, { listenbrainzToken: '', lastfmSecret: '', lastfmSession: '' });
     const blob = new Blob([JSON.stringify({ app: 'BitChord for Chrome', exportedAt: new Date().toISOString(), data }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = `bitchord-export-${new Date().toISOString().slice(0, 10)}.json`; a.click();
@@ -281,7 +331,7 @@ export function SettingsPage({ me, onClose, initial }: { me: AccountInfo | null;
 
   return (
     <div className="settings-layer">
-      {page === 'transfer' ? <TransferPage onBack={() => (initial ? onClose() : setPage('main'))} /> : page === 'accounts' ? <AccountsPage onBack={() => setPage('main')} /> : page === 'sources' ? <SourcesPage onBack={() => setPage('main')} /> : (
+      {page === 'eq' ? <EqPage onBack={() => setPage('main')} /> : page === 'transfer' ? <TransferPage onBack={() => (initial ? onClose() : setPage('main'))} /> : page === 'accounts' ? <AccountsPage onBack={() => setPage('main')} /> : page === 'sources' ? <SourcesPage onBack={() => setPage('main')} /> : (
         <Page title="Settings" onBack={onClose}>
           <Group>
             <Row icon="person" title="Account & integrations" sub={me ? `${me.name}${me.email ? ' · ' + me.email : ''}` : 'Not signed in'} onClick={() => setPage('accounts')} />
@@ -296,6 +346,10 @@ export function SettingsPage({ me, onClose, initial }: { me: AccountInfo | null;
 
           <Group label="Playback">
             <Row icon="radio" title="Autoplay radio" sub="Keeps playing similar songs when your queue ends" toggle={{ on: s.autoRadio, set: (v) => save({ autoRadio: v }) }} />
+            <Row icon="waves" title="Crossfade" sub={s.crossfade ? `Songs blend for ${s.crossfade} seconds` : 'Off: songs change with a short fade'} value={s.crossfade ? `${s.crossfade}s` : 'Off'}>
+              <input className="s-slider" type="range" min={0} max={12} step={1} value={s.crossfade} style={{ ['--p' as string]: `${(s.crossfade / 12) * 100}%` }} onChange={(e) => save({ crossfade: Number(e.target.value) })} aria-label="Crossfade seconds" />
+            </Row>
+            <Row icon="tune" title="Equalizer" sub={s.eqOn ? s.eqPreset : 'Off'} onClick={() => setPage('eq')} />
             <Row icon="volume-off" title="Hide volume bar" sub="Removes the volume slider from the player" toggle={{ on: s.hideVolume, set: (v) => save({ hideVolume: v }) }} />
           </Group>
 

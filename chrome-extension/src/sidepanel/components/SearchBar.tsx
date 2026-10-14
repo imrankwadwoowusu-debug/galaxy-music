@@ -23,7 +23,7 @@ function Bold({ text, q }: { text: string; q: string }) {
 type Row = { type: 'recent'; text: string } | { type: 'sugg'; s: Suggestion };
 
 export function SearchBar({ value, onSearch, onOpen, onArtist, busy, autoFocus }: {
-  value: string | null; onSearch: (q: string) => void; onOpen: (c: Card) => void; onArtist: (n: string) => void; busy?: boolean; autoFocus?: boolean;
+  value: string | null; onSearch: (q: string) => void; onOpen: (c: Card) => void; onArtist: (n: string, id?: string) => void; busy?: boolean; autoFocus?: boolean;
 }) {
   const [q, setQ] = useState(value ?? '');
   const [sugg, setSugg] = useState<Suggestion[]>([]);
@@ -81,7 +81,7 @@ export function SearchBar({ value, onSearch, onOpen, onArtist, busy, autoFocus }
     close();
     rememberSearch(s.text);
     if ((s.kind === 'song' || s.kind === 'video') && s.track) return void playSongWithRadio(s.track);
-    if (s.kind === 'artist') return onArtist(s.text);
+    if (s.kind === 'artist') return onArtist(s.text, s.card?.browseId);
     if (s.card) return onOpen(s.card);
   };
   const removeRecent = async (text: string) => {

@@ -3,7 +3,7 @@ import type { Card, MoodChip } from '../lib/types';
 import { getAccountInfo } from '../lib/innertube';
 import { send, useArtColor, useCached, usePlayer, useSession, useSettings } from './hooks';
 import { Icon } from './components/Icon';
-import { CollectionView, ExplorePage, LibraryPage, ListenNow, MoodView, SearchPage } from './components/Views';
+import { ArtistView, CollectionView, ExplorePage, LibraryPage, ListenNow, MoodView, SearchPage } from './components/Views';
 import { MiniBar, NowPlaying } from './components/NowPlaying';
 import { SettingsPage } from './components/Settings';
 import { Arcs } from './components/Logo';
@@ -18,7 +18,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 
 const isTab = new URLSearchParams(location.search).get('mode') === 'tab';
 
-type Overlay = { kind: 'coll'; card: Card } | { kind: 'mood'; chip: MoodChip } | null;
+type Overlay = { kind: 'coll'; card: Card } | { kind: 'mood'; chip: MoodChip } | { kind: 'artist'; name: string; id?: string } | null;
 
 export default function App() {
   const player = usePlayer();
@@ -37,11 +37,15 @@ export default function App() {
   const signedIn = !!live; // session cookies present = signed in, even before the profile loads
 
   const top = () => main.current?.scrollTo({ top: 0 });
-  const go = (t: Tab) => { setTab(t); setOverlay(null); if (t !== 'search') setQuery(null); top(); };
-  const onSearch = (q: string) => { setTab('search'); setQuery(q); setOverlay(null); top(); };
-  const onArtist = (name: string) => onSearch(name);
-  const onMood = (chip: MoodChip) => { setOverlay({ kind: 'mood', chip }); top(); };
-  const onOpen = (card: Card) => { setOverlay({ kind: 'coll', card }); top(); };
+  const go = (t: Tab) => { setTab(t); setOverlay(null); setStack([]); if (t !== 'search') setQuery(null); top(); };
+  const onSearch = (q: string) => { setTab('search'); setQuery(q); setOverlay(null); setStack([]); top(); };
+  // Overlays stack like Android's back stack: artist -> album -> back to artist.
+  const [stack, setStack] = useState<Overlay[]>([]);
+  const push = (o: Overlay) => { setStack((st) => (overlay ? [...st, overlay].slice(-10) : st)); setOverlay(o); top(); };
+  const back = () => { setOverlay(stack[stack.length - 1] ?? null); setStack((st) => st.slice(0, -1)); top(); };
+  const onArtist = (name: string, id?: string) => { if (name || id) push({ kind: 'artist', name, id }); };
+  const onMood = (chip: MoodChip) => push({ kind: 'mood', chip });
+  const onOpen = (card: Card) => push({ kind: 'coll', card });
   const ctx = { activeId: player?.videoId ?? null, onArtist, onOpen };
 
   useEffect(() => {
@@ -89,9 +93,11 @@ export default function App() {
 
           <div className="content">
             {overlay?.kind === 'coll' ? (
-              <CollectionView card={overlay.card} ctx={ctx} onBack={() => setOverlay(null)} />
+              <CollectionView key={overlay.card.browseId ?? overlay.card.title} card={overlay.card} ctx={ctx} onBack={back} />
             ) : overlay?.kind === 'mood' ? (
-              <MoodView chip={overlay.chip} ctx={ctx} onBack={() => setOverlay(null)} />
+              <MoodView chip={overlay.chip} ctx={ctx} onBack={back} />
+            ) : overlay?.kind === 'artist' ? (
+              <ArtistView key={overlay.id ?? overlay.name} name={overlay.name} id={overlay.id} ctx={ctx} onBack={back} />
             ) : (
               <>
                 <h1 className="big-title">{titles[tab]}</h1>
@@ -105,7 +111,7 @@ export default function App() {
         </main>
 
         <aside className="side">
-          {player && <NowPlaying s={player} settings={settings} onArtist={(n) => { setExpanded(false); onArtist(n); }} />}
+          {player && <NowPlaying s={player} settings={settings} onArtist={(n, id) => { setExpanded(false); onArtist(n, id); }} />}
           <button className="collapse" onClick={() => setExpanded(false)} aria-label="Close Now Playing"><Icon name="chevron" /></button>
         </aside>
       </div>

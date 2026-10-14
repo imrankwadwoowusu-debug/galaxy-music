@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { deleteImported, getImported, type ImportedPlaylist } from '../../lib/transfer/index';
 import type { Card, MoodChip, Shelf, Track } from '../../lib/types';
-import { getCardTracks, getCollection, getHome, getHomeMore, getLibraryPlaylists, getMoodCategory, getMoods, getNewReleases, search, sized, type SearchChip } from '../../lib/innertube';
+import { findArtistId, getArtist, getQueue, getCardTracks, getCollection, getHome, getHomeMore, getLibraryPlaylists, getMoodCategory, getMoods, getNewReleases, search, sized, type SearchChip } from '../../lib/innertube';
 import { readCache, refresh } from '../../lib/cache';
 import { SearchBar } from './SearchBar';
 import { getLiked, getRecent } from '../../lib/history';
@@ -10,7 +10,7 @@ import { CardTile, playSongWithRadio, TrackRow } from './Items';
 import { Icon } from './Icon';
 
 
-export interface Ctx { activeId: string | null; onArtist: (n: string) => void; onOpen: (c: Card) => void }
+export interface Ctx { activeId: string | null; onArtist: (n: string, id?: string) => void; onOpen: (c: Card) => void }
 
 const HOUR = 60 * 60 * 1000;
 
@@ -192,7 +192,7 @@ function HeroCard({ c, ctx }: { c: Card; ctx: Ctx }) {
     e.stopPropagation(); setBusy(true);
     try { const t = await getCardTracks(c); if (t.length) await send({ type: 'play-queue', tracks: t, index: 0 }); } finally { setBusy(false); }
   };
-  const open = () => (c.kind === 'artist' ? ctx.onArtist(c.title) : c.kind === 'album' || c.kind === 'playlist' ? ctx.onOpen(c) : play({ stopPropagation() {} } as React.MouseEvent));
+  const open = () => (c.kind === 'artist' ? ctx.onArtist(c.title, c.browseId) : c.kind === 'album' || c.kind === 'playlist' ? ctx.onOpen(c) : play({ stopPropagation() {} } as React.MouseEvent));
   return (
     <button className="hero-card" onClick={open} title={c.title}>
       <img src={sized(c.thumbnail, 544)} alt="" loading="lazy" />
@@ -447,7 +447,7 @@ function TopResult({ shelf, ctx }: { shelf: Shelf; ctx: Ctx }) {
   const lead = card ? null : shelf.tracks[0];
   const songs = card ? shelf.tracks : shelf.tracks.slice(1);
   const art = card?.thumbnail ?? lead?.thumbnail ?? '';
-  const open = () => (card ? (card.kind === 'artist' ? ctx.onArtist(card.title) : ctx.onOpen(card)) : lead && playSongWithRadio(lead));
+  const open = () => (card ? (card.kind === 'artist' ? ctx.onArtist(card.title, card.browseId) : ctx.onOpen(card)) : lead && playSongWithRadio(lead));
   return (
     <section className="section top-result">
       <SectionHead title="Top result" />
@@ -498,6 +498,63 @@ export function CollectionView({ card, ctx, onBack }: { card: Card; ctx: Ctx; on
             </div>
           </div>
           {data!.tracks.length ? <TrackGrid tracks={data!.tracks} ctx={ctx} /> : <div className="hint">No playable tracks.</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- Artist page (BitChord's ArtistScreen) ----------
+export function ArtistView({ name, id, ctx, onBack }: { name: string; id?: string; ctx: Ctx; onBack: () => void }) {
+  const lead = name.split(/,| & /)[0].trim();
+  const { data, error, loading, retry } = useCached(`artist:${id ?? lead.toLowerCase()}`, async () => {
+    const bid = id ?? (await findArtistId(lead));
+    if (!bid) throw new Error(`Couldn't find ${lead} on YouTube Music`);
+    return getArtist(bid);
+  }, 6 * HOUR);
+  const [more, setMore] = useState(false);
+  const [busy, setBusy] = useState<'' | 'shuffle' | 'radio'>('');
+  const start = async (kind: 'shuffle' | 'radio') => {
+    const ep = kind === 'shuffle' ? data?.shuffle : data?.radio;
+    if (!ep && !data?.topSongs.length) return;
+    setBusy(kind);
+    try {
+      const tracks = ep ? await getQueue(ep) : data!.topSongs;
+      if (tracks.length) send({ type: 'play-queue', tracks, index: 0 });
+    } finally { setBusy(''); }
+  };
+  return (
+    <div className="artist-page">
+      <button className="back-btn" onClick={onBack} aria-label="Back"><Icon name="back" size={22} /></button>
+      {loading ? (
+        <><div className="artist-hero"><span className="skel artist-skel" /><div className="artist-info"><span className="skel l1" /><span className="skel l2" /></div></div><SkelRows n={5} /></>
+      ) : error ? <Err msg={error} retry={retry} /> : (
+        <>
+          <div className="artist-hero" style={{ ['--banner' as string]: data!.banner ? `url("${data!.banner}")` : 'none' }}>
+            <div className="artist-banner" />
+            <img className="artist-photo" src={data!.thumbnail} alt="" />
+            <div className="artist-info">
+              <h1 className="artist-name">{data!.name}</h1>
+              <div className="artist-meta">{[data!.audience, data!.subscribers && `${data!.subscribers} subscribers`].filter(Boolean).join(' · ')}</div>
+              <div className="coll-actions">
+                <button className="pill" disabled={!!busy} onClick={() => start('shuffle')}>{busy === 'shuffle' ? <span className="spinner sm" /> : <Icon name="shuffle" size={16} />} Shuffle</button>
+                <button className="pill ghost" disabled={!!busy} onClick={() => start('radio')}>{busy === 'radio' ? <span className="spinner sm" /> : <Icon name="radio" size={16} />} Radio</button>
+              </div>
+            </div>
+          </div>
+          {data!.topSongs.length > 0 && (
+            <section className="section">
+              <SectionHead title="Top songs" onMore={data!.topSongsCard ? () => ctx.onOpen(data!.topSongsCard!) : undefined} />
+              <TrackGrid tracks={data!.topSongs} ctx={ctx} />
+            </section>
+          )}
+          {data!.shelves.map((sh, i) => <ShelfView key={i} shelf={sh} ctx={ctx} />)}
+          {data!.description && (
+            <section className="section">
+              <SectionHead title="About" />
+              <p className={`artist-about ${more ? 'open' : ''}`} onClick={() => setMore(!more)}>{data!.description}</p>
+            </section>
+          )}
         </>
       )}
     </div>

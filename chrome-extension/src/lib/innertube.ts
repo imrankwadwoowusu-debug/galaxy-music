@@ -137,9 +137,8 @@ function parseListItem(r: J): { track?: Track; card?: Card } {
 
   if (videoId) {
     // Artists are the runs that link to artist pages; album links to an album page.
-    const artists = runs
-      .filter((x) => x.navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType === 'MUSIC_PAGE_TYPE_ARTIST')
-      .map((x) => x.text);
+    const artistRuns = runs.filter((x) => x.navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType === 'MUSIC_PAGE_TYPE_ARTIST');
+    const artists = artistRuns.map((x) => x.text);
     const album = runs.find((x) => x.navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType === 'MUSIC_PAGE_TYPE_ALBUM')?.text;
     const fixed = text(r.fixedColumns?.[0]?.musicResponsiveListItemFixedColumnRenderer?.text);
     const durationRun = [...runs].reverse().find((x) => /^\d+:\d{2}(:\d{2})?$/.test(x.text)) ?? (/^\d+:\d{2}/.test(fixed) ? { text: fixed } : undefined);
@@ -154,6 +153,7 @@ function parseListItem(r: J): { track?: Track; card?: Card } {
         album,
         thumbnail,
         duration: durationRun?.text,
+        artistId: artistRuns[0]?.navigationEndpoint?.browseEndpoint?.browseId,
       },
     };
   }
@@ -436,9 +436,10 @@ export async function getAccountInfo(): Promise<AccountInfo | null> {
 }
 
 // Queue for a song (radio) or a playlist/album.
-export async function getQueue(opts: { videoId?: string; playlistId?: string }): Promise<Track[]> {
+export async function getQueue(opts: { videoId?: string; playlistId?: string; params?: string }): Promise<Track[]> {
   const body: Record<string, unknown> = { isAudioOnly: true };
   if (opts.videoId) body.videoId = opts.videoId;
+  if (opts.params) body.params = decodeURIComponent(opts.params);
   body.playlistId = opts.playlistId ?? (opts.videoId ? `RDAMVM${opts.videoId}` : undefined);
   const d = await call('next', body);
   const panel =
@@ -448,10 +449,10 @@ export async function getQueue(opts: { videoId?: string; playlistId?: string }):
     const v = it.playlistPanelVideoRenderer ?? it.playlistPanelVideoWrapperRenderer?.primaryRenderer?.playlistPanelVideoRenderer;
     if (!v?.videoId) continue;
     const byline: J[] = v.longBylineText?.runs ?? [];
-    const artists = byline
-      .filter((x) => x.navigationEndpoint?.browseEndpoint?.browseId?.startsWith('UC'))
-      .map((x) => x.text);
+    const artistRuns = byline.filter((x) => x.navigationEndpoint?.browseEndpoint?.browseId?.startsWith('UC'));
+    const artists = artistRuns.map((x) => x.text);
     tracks.push({
+      artistId: artistRuns[0]?.navigationEndpoint?.browseEndpoint?.browseId,
       videoId: v.videoId,
       title: text(v.title),
       artists: artists.length ? artists.join(', ') : text(v.shortBylineText),
@@ -574,4 +575,48 @@ export async function createPlaylist(title: string, description: string, videoId
 export async function likeOnYouTubeMusic(videoId: string): Promise<void> {
   await signedOnly();
   await call('like/like', { target: { videoId } });
+}
+
+// ---------- artist pages (browse UC…, musicImmersiveHeaderRenderer) ----------
+export interface ArtistPage {
+  id: string; name: string; thumbnail: string; banner: string; description: string; audience: string; subscribers: string;
+  shuffle?: { videoId: string; playlistId?: string; params?: string };
+  radio?: { videoId: string; playlistId?: string; params?: string };
+  topSongs: Track[]; topSongsCard?: Card;
+  shelves: Shelf[];
+}
+const ARTISTS_PARAMS = 'EgWKAQIgAWoKEAkQBRAKEAMQBA%3D%3D';
+const looseName = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
+/** browseId for an artist name: the Artists search filter, best name match first. */
+export async function findArtistId(name: string): Promise<string | undefined> {
+  const lead = name.split(/,| & | x | feat\.? /i)[0].trim();
+  const d = await call('search', { query: lead, params: decodeURIComponent(ARTISTS_PARAMS) });
+  const cards = parseSearch(d).shelves.flatMap((s) => s.cards).filter((c) => c.kind === 'artist' && c.browseId?.startsWith('UC'));
+  return (cards.find((c) => looseName(c.title) === looseName(lead)) ?? cards[0])?.browseId;
+}
+export async function getArtist(browseId: string): Promise<ArtistPage> {
+  const d = await call('browse', { browseId });
+  const h = d?.header?.musicImmersiveHeaderRenderer ?? d?.header?.musicVisualHeaderRenderer ?? {};
+  const thumbs: J[] = h.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails ?? h.foregroundThumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails ?? [];
+  const raw: string = thumbs[thumbs.length - 1]?.url ?? '';
+  const ep = (b: J) => { const w = b?.buttonRenderer?.navigationEndpoint?.watchEndpoint ?? b?.buttonRenderer?.navigationEndpoint?.watchPlaylistEndpoint; return w ? { videoId: w.videoId, playlistId: w.playlistId, params: w.params } : undefined; };
+  const sections: J[] = sectionsOf(d);
+  const songsShelf = sections.find((x) => x.musicShelfRenderer)?.musicShelfRenderer;
+  const topSongs: Track[] = [];
+  for (const it of songsShelf?.contents ?? []) { const p = it.musicResponsiveListItemRenderer && parseListItem(it.musicResponsiveListItemRenderer); if (p?.track) topSongs.push(p.track); }
+  const more = songsShelf?.bottomEndpoint?.browseEndpoint?.browseId ?? songsShelf?.title?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId;
+  const about = sections.find((x) => x.musicDescriptionShelfRenderer)?.musicDescriptionShelfRenderer;
+  const name = text(h.title);
+  return {
+    id: browseId, name,
+    thumbnail: raw ? raw.replace(/=w\d+-h\d+.*$/, '=w544-h544-p-l90-rj') : '',
+    banner: raw ? raw.replace(/=w\d+-h\d+/, '=w1200-h500') : '',
+    description: text(h.description) || text(about?.description),
+    audience: text(h.monthlyListenerCount) || text(about?.subheader),
+    subscribers: text(h.subscriptionButton?.subscribeButtonRenderer?.subscriberCountText),
+    shuffle: ep(h.playButton), radio: ep(h.startRadioButton),
+    topSongs: topSongs.map((t) => ({ ...t, artists: t.artists || name })),
+    topSongsCard: more ? { kind: 'playlist', title: `${name}: Top songs`, subtitle: 'Playlist', thumbnail: topSongs[0]?.thumbnail ?? '', browseId: more } : undefined,
+    shelves: parseShelves(d).filter((s) => s.cards.length),
+  };
 }

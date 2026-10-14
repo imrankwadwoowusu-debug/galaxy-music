@@ -7,6 +7,8 @@ export interface Track {
   album?: string;
   thumbnail: string;
   duration?: string; // "3:24"
+  /** browseId (UC…) of the lead artist, when the row links one */
+  artistId?: string;
 }
 
 export type CardKind = 'album' | 'playlist' | 'artist' | 'video' | 'song';
@@ -51,6 +53,10 @@ export interface PlayerState {
   stream: string | null; // "Stats for nerds": e.g. "JioSaavn · 320 kbps AAC"
   resolving: boolean;
   error: string | null;
+  /** Sleep timer: epoch ms when playback pauses, or null */
+  sleepAt: number | null;
+  /** Sleep timer: pause when the current song ends */
+  sleepEndOfTrack: boolean;
 }
 
 export type SourceOrder = 'saavn-first' | 'youtube-first' | 'youtube-only' | 'tab-only';
@@ -72,6 +78,17 @@ export interface Settings {
   // Playback
   autoRadio: boolean;
   hideVolume: boolean;
+  /** seconds of overlap between songs, 0 = off */
+  crossfade: number;
+  /** Equalizer: 10 bands (31 Hz to 16 kHz), dB */
+  eqOn: boolean;
+  eqPreset: string;
+  eqGains: number[];
+  /** Last.fm: your own API key and secret (last.fm/api/account/create) and the session they unlock */
+  lastfmKey: string;
+  lastfmSecret: string;
+  lastfmSession: string;
+  lastfmUser: string;
   // Appearance
   theme: Theme;
   reduceMotion: boolean;
@@ -87,7 +104,9 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   sources: ['jiosaavn', 'youtube'], jiosaavn: true, tabFallback: true, quality: 'high',
   useAccount: true, defaultAccount: 'youtube-music', authUser: 0, listenbrainzToken: '',
-  autoRadio: true, hideVolume: false,
+  autoRadio: true, hideVolume: false, crossfade: 0,
+  eqOn: false, eqPreset: 'Flat', eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  lastfmKey: '', lastfmSecret: '', lastfmSession: '', lastfmUser: '',
   theme: 'dark', reduceMotion: false, reduceBlur: false, syncedLyrics: true, blurLyrics: true,
   showStats: false, lyricsDebug: false,
 };
@@ -112,6 +131,7 @@ export type UiCommand =
   | { type: 'shuffle' }
   | { type: 'repeat' }
   | { type: 'activate-helper' }
+  | { type: 'sleep'; minutes: number } // 0 = off, -1 = end of this song
   | { type: 'open-tab' };
 
 export type PageCommand =
@@ -133,3 +153,16 @@ export interface PageState {
   /** an ad is on screen (the helper tab skips it) */
   ad?: boolean;
 }
+
+export const EQ_BANDS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+export const EQ_PRESETS: Record<string, number[]> = {
+  Flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  'Bass boost': [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
+  'Treble boost': [0, 0, 0, 0, 0, 1, 2, 4, 5, 6],
+  Vocal: [-2, -2, -1, 1, 3, 4, 3, 1, 0, -1],
+  Pop: [-1, 1, 3, 4, 3, 0, -1, -1, 1, 2],
+  Rock: [4, 3, 2, 0, -1, -1, 1, 2, 3, 4],
+  Electronic: [5, 4, 1, 0, -2, 1, 0, 1, 4, 5],
+  Acoustic: [3, 3, 2, 1, 1, 1, 2, 2, 2, 1],
+  'Late night': [3, 2, 1, 0, -1, -1, -2, -3, -3, -4],
+};

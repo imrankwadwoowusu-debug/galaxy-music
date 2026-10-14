@@ -15,7 +15,7 @@ export async function playSongWithRadio(t: Track) {
 }
 
 export function TrackRow({ t, list, i, activeId, onArtist }: {
-  t: Track; list?: Track[]; i?: number; activeId?: string | null; onArtist?: (name: string) => void;
+  t: Track; list?: Track[]; i?: number; activeId?: string | null; onArtist?: (name: string, id?: string) => void;
 }) {
   const active = activeId === t.videoId;
   const play = () => (list && i != null ? send({ type: 'play-queue', tracks: list, index: i }) : playSongWithRadio(t));
@@ -28,7 +28,7 @@ export function TrackRow({ t, list, i, activeId, onArtist }: {
       <div className="track-meta" onClick={play}>
         <div className="track-title" title={t.title}>{t.title}</div>
         <div className="track-sub">
-          <span className="link" onClick={(e) => { if (onArtist) { e.stopPropagation(); onArtist(t.artists); } }}>{t.artists}</span>
+          <span className="link" onClick={(e) => { if (onArtist) { e.stopPropagation(); onArtist(t.artists, t.artistId); } }}>{t.artists}</span>
           {t.album ? ` · ${t.album}` : ''}
         </div>
       </div>
@@ -41,7 +41,7 @@ export function TrackRow({ t, list, i, activeId, onArtist }: {
   );
 }
 
-export function CardTile({ c, onArtist, onOpen }: { c: Card; onArtist?: (name: string) => void; onOpen?: (c: Card) => void }) {
+export function CardTile({ c, onArtist, onOpen }: { c: Card; onArtist?: (name: string, id?: string) => void; onOpen?: (c: Card) => void }) {
   const [busy, setBusy] = useState(false);
   const wide = c.kind === 'video';
   const play = async () => {
@@ -52,7 +52,7 @@ export function CardTile({ c, onArtist, onOpen }: { c: Card; onArtist?: (name: s
     } finally { setBusy(false); }
   };
   const open = () => {
-    if (c.kind === 'artist') return onArtist?.(c.title);
+    if (c.kind === 'artist') return onArtist?.(c.title, c.browseId);
     if ((c.kind === 'album' || c.kind === 'playlist') && onOpen) return onOpen(c);
     return play();
   };

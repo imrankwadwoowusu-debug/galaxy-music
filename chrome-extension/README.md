@@ -99,3 +99,21 @@ src/sidepanel/              React UI
 - Importing the same playlist again replaces the old copy instead of duplicating it.
 - A bad link is rejected immediately, without starting an import.
 - Liked-song imports with zero matches no longer report "saved to YouTube Music".
+
+## v0.6.0 (14 Oct 2026): artist pages, crossfade, equalizer, Last.fm, sleep timer
+New:
+- **Artist pages** like BitChord's ArtistScreen: a header photo and banner, monthly audience and subscribers, Shuffle and Radio, Top songs (with See all), Albums, Singles & EPs, Videos, Featured on, Fans might also like, and About. Tap an artist anywhere: a song row, search, the player, or a card. Back returns to the previous page.
+- **Crossfade** (Settings → Playback, 0–12 s): equal-power blend between songs, with two audio elements in the offscreen document.
+- **Equalizer**: 10 bands from 31 Hz to 16 kHz, nine presets plus Custom. Open it from the player (sliders icon) or Settings → Playback. Uses Web Audio with a limiter; DNR rule 16 makes direct streams CORS-readable. If a stream refuses, that song plays without the EQ instead of failing.
+- **Last.fm scrobbling** (Account & integrations → Scrobbling): desktop auth with your own API key and secret. Sends now-playing, and scrobbles after half the song or 4 minutes.
+- **Sleep timer** (moon icon on the player): 15/30/45/60 minutes or the end of this song. Fades out over 6 s and survives the panel closing.
+
+Improved:
+- **Faster track changes**: while a song plays, the next one's stream is resolved in the background. Recently played streams are reused for 25 minutes, and expired links are looked up again automatically. The start watchdog dropped from 9 s to 7 s.
+- **Smoother lyrics**: the playback clock is interpolated every animation frame, so the word-by-word fill no longer steps every 100 ms or jitters backwards when a late update arrives.
+- **Transfer matching**:
+  - Strips "From \"Film\"" tails.
+  - Catches transliterated titles (same lead artist, most words shared, runtime within 2 s).
+  - Gives an album-name bonus.
+  - Stops early on strong hits.
+  - Remembers matches between imports.

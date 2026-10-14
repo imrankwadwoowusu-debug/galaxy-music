@@ -24,41 +24,89 @@ const norm = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[\u0300-\
 const clean = (t: string) => t.replace(/\s+-\s+(\d{4}\s+)?(remaster(ed)?|single version|mono|stereo)(\s+\d{4})?$/i, '').replace(/\s*\((feat|ft|with)\.? [^)]*\)/i, '').trim();
 const leadArtist = (a: string) => a.split(/,|&| x | feat\.? | ft\.? | and /i)[0].trim();
 
-const memo = new Map<string, Track | null>();
+// Matches survive between imports (and re-imports), so a second run is fast
+// and gentle on YouTube Music's rate limit.
+const MATCH_KEY = 'transferMatches';
+let memo: Map<string, Track | null> | null = null;
+let memoDirty: ReturnType<typeof setTimeout> | null = null;
+async function loadMemo() {
+  if (memo) return memo;
+  try { memo = new Map(Object.entries(((await chrome.storage.local.get(MATCH_KEY))[MATCH_KEY] as Record<string, Track | null>) ?? {})); }
+  catch { memo = new Map(); }
+  return memo;
+}
+function remember(k: string, v: Track | null) {
+  memo!.set(k, v);
+  if (memoDirty) return;
+  memoDirty = setTimeout(() => {
+    memoDirty = null;
+    // keep the newest 3000 and don't persist misses (the catalogue grows)
+    const entries = [...memo!.entries()].filter(([, x]) => x).slice(-3000);
+    try { chrome.storage.local.set({ [MATCH_KEY]: Object.fromEntries(entries) }); } catch { /* node tests */ }
+  }, 1500);
+}
+
+const tokens = (s: string) => new Set(norm(s).split(' ').filter((w) => w.length > 1));
+const overlap = (a: string, b: string) => {
+  const x = tokens(a), y = tokens(b);
+  if (!x.size || !y.size) return 0;
+  const inter = [...x].filter((w) => y.has(w)).length;
+  return inter / Math.min(x.size, y.size);
+};
+/** "Song - From \"Film\"", "Song (From Film)", "Song [Live]" -> the title proper, keeping version words. */
+const titleProper = (t: string) => clean(t).replace(/\s+-\s+from\s+.*$/i, '').replace(/\s*\((from|taken from)\s[^)]*\)/i, '').trim();
+
+async function searchRetry(q: string): Promise<Track[]> {
+  for (let tries = 0; tries < 4; tries++) {
+    try { return await searchSongs(q); }
+    catch (e: any) {
+      // YouTube Music rate-limits bursts; back off instead of calling it a miss.
+      if (/\(429\)|too long|connection/i.test(String(e?.message))) { await new Promise((r) => setTimeout(r, 1500 * (tries + 1))); continue; }
+      return [];
+    }
+  }
+  return [];
+}
+
+function rate(t: SourceTrack, title: string, r: Track): number {
+  const c = { title: clean(r.title), artist: r.artists, durationSec: toSeconds(r.duration) };
+  const target = { title, artist: t.artist, durationSec: t.durationSec, tolerance: 6 };
+  let s = score(target, c) || score({ ...target, title: titleProper(t.title) }, { ...c, title: titleProper(r.title) });
+  const artistOk = norm(c.artist).includes(norm(leadArtist(t.artist))) || norm(t.artist).includes(norm(leadArtist(c.artist)));
+  const dDiff = t.durationSec && c.durationSec ? Math.abs(t.durationSec - c.durationSec) : null;
+  if (!s) {
+    // Looser: same lead artist, one title contains the other, same length.
+    const a = titleParts(title).words, b = titleParts(c.title).words;
+    if (a && b && (a.includes(b) || b.includes(a)) && dDiff != null && dDiff <= 3 && artistOk) s = 30;
+  }
+  if (!s && dDiff != null && dDiff <= 2 && artistOk && overlap(titleProper(t.title), titleProper(r.title)) >= 0.6) {
+    // Transliterated or re-punctuated titles ("Naatu Naatu" vs "Naatu Naatu (Telugu)"):
+    // most words shared, same lead artist and near-identical runtime.
+    s = 25;
+  }
+  if (s && t.album && r.album) s += norm(r.album) === norm(t.album) ? 8 : overlap(t.album, r.album) >= 0.6 ? 4 : 0;
+  return s;
+}
+
 /** Best YouTube Music song for a track from another service, or null when nothing is a safe match. */
 export async function matchTrack(t: SourceTrack): Promise<Track | null> {
+  const m = await loadMemo();
   const k = norm(`${t.title}|${t.artist}|${t.durationSec ?? ''}`);
-  if (memo.has(k)) return memo.get(k)!;
+  if (m.has(k)) return m.get(k)!;
   const title = clean(t.title);
-  let found: Track | null = null;
-  for (const q of [`${title} ${leadArtist(t.artist)}`, `${title} ${t.artist}`, title]) {
-    let rows: Track[] = [];
-    for (let tries = 0; tries < 4; tries++) {
-      try { rows = await searchSongs(q); break; }
-      catch (e: any) {
-        // YouTube Music rate-limits bursts; back off instead of calling it a miss.
-        if (/\(429\)|too long|connection/i.test(String(e?.message))) { await new Promise((r) => setTimeout(r, 1500 * (tries + 1))); continue; }
-        break;
-      }
-    }
-    const target = { title, artist: t.artist, durationSec: t.durationSec, tolerance: 6 };
-    let top: Track | null = null, topScore = 0;
+  let found: Track | null = null, foundScore = 0;
+  const queries = [...new Set([`${title} ${leadArtist(t.artist)}`, `${titleProper(t.title)} ${leadArtist(t.artist)}`, `${title} ${t.artist}`, title])];
+  for (const q of queries) {
+    const rows = await searchRetry(q);
     for (const r of rows.slice(0, 10)) {
-      const c = { title: clean(r.title), artist: r.artists, durationSec: toSeconds(r.duration) };
-      let s = score(target, c);
-      // Looser fallback: same lead artist, one title contains the other, same length.
-      if (!s) {
-        const a = titleParts(title).words, b = titleParts(c.title).words;
-        const sameLen = !t.durationSec || !c.durationSec || Math.abs(t.durationSec - c.durationSec) <= 3;
-        const artistOk = norm(c.artist).includes(norm(leadArtist(t.artist))) || norm(t.artist).includes(norm(leadArtist(c.artist)));
-        if (a && b && (a.includes(b) || b.includes(a)) && sameLen && artistOk && t.durationSec && c.durationSec) s = 30;
-      }
-      if (t.album && r.album && norm(r.album) === norm(t.album)) s += s ? 5 : 0;
-      if (s > topScore) { top = r; topScore = s; }
+      const sc = rate(t, title, r);
+      if (sc > foundScore) { found = r; foundScore = sc; }
     }
-    if (top) { found = top; break; }
+    // A strong hit (title + artist + runtime agree) ends the search early.
+    if (foundScore >= 90) break;
+    if (found && q !== queries[0]) break;
   }
-  memo.set(k, found);
+  remember(k, found);
   return found;
 }
 

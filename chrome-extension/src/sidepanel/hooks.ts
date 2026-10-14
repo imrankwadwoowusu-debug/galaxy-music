@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { isFresh, readCache, refresh } from '../lib/cache';
 import type { PlayerState, UiCommand } from '../lib/types';
 import { artworkColor } from '../lib/theme';
@@ -37,17 +37,31 @@ export function usePlayer(): PlayerState | null {
   return s;
 }
 
-// Smoothly ticking position between 500 ms state pushes
-export function useLivePosition(s: PlayerState | null): number {
+// Smoothly ticking position between state pushes: follows the audio clock
+// every animation frame, and never steps backwards by a few hundred ms when a
+// late push arrives (that jitter made word-by-word lyrics flicker).
+export function useLivePosition(s: PlayerState | null, fps = 60): number {
   const [pos, setPos] = useState(0);
+  const last = useRef(0);
   useEffect(() => {
     if (!s) return;
-    setPos(s.position);
+    const base = s.position, start = performance.now();
+    const clamp = (v: number) => Math.min(v, s.duration || Infinity);
+    // small backward corrections are jitter; big ones are seeks
+    const first = s.playing && base < last.current && last.current - base < 0.35 ? last.current : base;
+    last.current = first; setPos(first);
     if (!s.playing) return;
-    const start = performance.now();
-    const id = setInterval(() => setPos(Math.min(s.position + (performance.now() - start) / 1000, s.duration || Infinity)), 100);
-    return () => clearInterval(id);
-  }, [s?.position, s?.playing, s?.duration]);
+    let raf = 0, prevPaint = 0;
+    const step = (now: number) => {
+      raf = requestAnimationFrame(step);
+      if (now - prevPaint < 1000 / fps) return;
+      prevPaint = now;
+      const v = clamp(Math.max(first, base + (now - start) / 1000));
+      last.current = v; setPos(v);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [s?.position, s?.playing, s?.duration, fps]);
   return pos;
 }
 
