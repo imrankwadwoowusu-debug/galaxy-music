@@ -14,13 +14,14 @@ export async function playSongWithRadio(t: Track) {
   } catch { /* radio is a bonus */ }
 }
 
-export function TrackRow({ t, list, i, activeId, onArtist }: {
-  t: Track; list?: Track[]; i?: number; activeId?: string | null; onArtist?: (name: string, id?: string) => void;
+export function TrackRow({ t, list, i, activeId, onArtist, meta, rank }: {
+  t: Track; list?: Track[]; i?: number; activeId?: string | null; onArtist?: (name: string, id?: string) => void; meta?: string; rank?: number;
 }) {
   const active = activeId === t.videoId;
   const play = () => (list && i != null ? send({ type: 'play-queue', tracks: list, index: i }) : playSongWithRadio(t));
   return (
     <div className={`track ${active ? 'active' : ''}`} onDoubleClick={play}>
+      {rank != null && <span className="track-rank">{rank}</span>}
       <button className="track-art" onClick={play} aria-label={`Play ${t.title}`}>
         <img src={t.thumbnail} alt="" loading="lazy" />
         <span className="track-play"><Icon name={active ? 'eq' : 'play'} /></span>
@@ -29,8 +30,9 @@ export function TrackRow({ t, list, i, activeId, onArtist }: {
         <div className="track-title" title={t.title}>{t.title}</div>
         <div className="track-sub">
           <span className="link" onClick={(e) => { if (onArtist) { e.stopPropagation(); onArtist(t.artists, t.artistId); } }}>{t.artists}</span>
-          {t.album ? ` · ${t.album}` : ''}
+          {meta ? '' : t.album ? ` · ${t.album}` : ''}
         </div>
+        {meta && <div className="track-meta2">{meta}</div>}
       </div>
       {t.duration && <span className="track-dur">{t.duration}</span>}
       <div className="track-actions">

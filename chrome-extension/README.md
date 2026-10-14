@@ -117,3 +117,17 @@ Improved:
   - Gives an album-name bonus.
   - Stops early on strong hits.
   - Remembers matches between imports.
+
+## v0.7.0 (14 Oct 2026): Discover, new music from more than YouTube Music
+- **New tab, "New Releases"**: the latest songs from three catalogues, all public and without sign-in:
+  - **JioSaavn**: new releases per language (content.getAlbums&languages=…, plus the songs of each new album). These songs play straight from JioSaavn at 320 kbps.
+  - **Apple Music**: iTunes charts per regional genre (Telugu, Tamil, Bollywood, Kannada) and per style, with the lookup API filling in runtime, genre, release date and 1000 px official artwork.
+  - **Deezer**: worldwide and per-genre charts with 1000 px covers.
+- **Languages**: Telugu, Hindi, Tamil, English, Punjabi, Kannada, Malayalam, Marathi, Bengali, Bhojpuri, Gujarati and Korean. You can pick several, and the choice is saved.
+- **Genres**: Film, Pop, Hip-hop, Dance, R&B, Rock, Electronic, Devotional, Sufi & ghazal, Indian folk and Indian classical.
+- **Matching**: each song is merged across catalogues by its title proper and lead artist. It keeps the best official cover art (Apple, then Deezer, then JioSaavn) and the catalogue's language (JioSaavn, then Apple's regional genre, then the script of the title).
+- **New releases list**: covers the last 6 weeks, newest first. Languages alternate within a release day.
+- **Playback for songs found outside YouTube Music**:
+  - "jsv:" songs use their own JioSaavn stream.
+  - "itm:" and "dz:" songs are matched to the same recording on YouTube Music (title, artist, runtime within 8 s), and the normal source chain takes over from there.
+- **Fix**: a stream that failed to decode could loop between the cached and fresh copy of the same source. The cache now skips sources already tried, and an expired link is retried only once.

@@ -9,9 +9,9 @@ import { lastfmNowPlaying, lastfmScrobble } from '../lib/lastfm';
 import { pushRecent } from '../lib/history';
 import { directOrder, getSettings, QUALITY_KBPS } from '../lib/settings';
 import { resolveYouTube, type ResolvedStream } from '../lib/sources/youtube';
-import { resolveSaavn } from '../lib/sources/jiosaavn';
-import { getQueue, getTrackDetails } from '../lib/innertube';
-import { toSeconds } from '../lib/matcher';
+import { bestRendition, decryptMediaUrl, resolveSaavn } from '../lib/sources/jiosaavn';
+import { getQueue, getTrackDetails, searchSongs } from '../lib/innertube';
+import { best, toSeconds } from '../lib/matcher';
 import { installStaticRules, setNativeUserAgent, syncYouTubeCookies } from './rules';
 
 const HELPER_URL = 'https://music.youtube.com/';
@@ -137,12 +137,46 @@ async function ensureHelper(videoId?: string): Promise<boolean> {
   return false;
 }
 async function playInTab(t: Track) {
+  const id = ytOf(t) ?? (await matchYouTube(t));
+  if (!id) { state.engine = null; state.playing = false; state.error = "Couldn't find this song on any source"; return; }
   state.engine = 'tab';
   state.stream = 'YouTube Music tab';
-  expectedVideoId = t.videoId;
+  expectedVideoId = id;
   lastLoadAt = Date.now();
-  const existed = await ensureHelper(t.videoId);
-  if (existed) await sendPage({ cmd: 'load', videoId: t.videoId });
+  const existed = await ensureHelper(id);
+  if (existed) await sendPage({ cmd: 'load', videoId: id });
+}
+
+// ---------- songs found outside YouTube Music (Discover) ----------
+// "jsv:" ids carry their own JioSaavn stream; "itm:" (Apple) and "dz:" (Deezer)
+// ids are matched to the same recording on YouTube Music when needed.
+const isYt = (id: string) => /^[\w-]{11}$/.test(id);
+const ytMatches = new Map<string, string | null>();
+function ytOf(t: Track): string | undefined {
+  if (isYt(t.videoId)) return t.videoId;
+  return ytMatches.get(t.videoId) ?? undefined;
+}
+async function matchYouTube(t: Track): Promise<string | undefined> {
+  if (isYt(t.videoId)) return t.videoId;
+  if (ytMatches.has(t.videoId)) return ytMatches.get(t.videoId) ?? undefined;
+  const lead = t.artists.split(/,|&/)[0].trim();
+  const target = { title: t.title, artist: t.artists, durationSec: toSeconds(t.duration), tolerance: 8 };
+  let hit: Track | null = null;
+  for (const q of [`${t.title.replace(/\(.*?\)|\[.*?\]/g, '')} ${lead}`, `${t.title} ${t.artists}`]) {
+    const rows = await searchSongs(q).catch(() => [] as Track[]);
+    hit = best(target, rows.map((r) => ({ ...r, artist: r.artists, durationSec: toSeconds(r.duration) })));
+    if (hit) break;
+  }
+  log('match youtube', t.title, hit ? hit.videoId : 'none');
+  ytMatches.set(t.videoId, hit?.videoId ?? null);
+  if (ytMatches.size > 500) ytMatches.delete(ytMatches.keys().next().value!);
+  return hit?.videoId;
+}
+function saavnDirect(t: Track, q: 'high' | 'normal' | 'low'): ResolvedStream | null {
+  const url = t.saavn ? decryptMediaUrl(t.saavn.enc) : '';
+  if (!url) return null;
+  const r = q === 'high' ? bestRendition(url, t.saavn!.has320) : q === 'normal' ? bestRendition(url.replace(/_(96|320)\./, '_160.'), false) : bestRendition(url, false);
+  return { url: r.url, mimeType: 'audio/mp4', kbps: r.kbps, source: 'jiosaavn', durationSec: toSeconds(t.duration) };
 }
 
 // ---------- source chain ----------
@@ -153,6 +187,7 @@ const describe = (s: ResolvedStream) => {
 
 const details = new Map<string, Awaited<ReturnType<typeof getTrackDetails>>>();
 async function enrich(t: Track) {
+  if (!isYt(t.videoId)) return {} as Awaited<ReturnType<typeof getTrackDetails>>; // catalogue rows already carry runtime and album
   let info = details.get(t.videoId);
   if (!info) {
     info = await getTrackDetails(t.videoId).catch(() => ({}));
@@ -172,7 +207,21 @@ async function resolveNext(t: Track, order: string[], triedSources: Set<string>,
     try {
       const q = (await getSettings()).quality;
       let tol = 12;
-      if (src === 'saavn') {
+      if (src === 'saavn' && t.saavn) {
+        const r = saavnDirect(t, q);
+        log('source', 'saavn', r ? 'own stream' : 'bad link');
+        if (r) { resolved.set(t.videoId, { r, src, at: Date.now() }); return r; }
+        failReasons.push('JioSaavn: bad link');
+        continue;
+      }
+      let ytId = t.videoId;
+      if (src === 'youtube' && !isYt(t.videoId)) {
+        const m = await matchYouTube(t);
+        if (!m) { failReasons.push('YouTube: no match'); continue; }
+        ytId = m;
+      }
+      if (src === 'saavn' && !isYt(t.videoId)) tol = 6;
+      else if (src === 'saavn') {
         // Search rows carry no runtime or album; without them a new song can
         // be "matched" to an older one with the same name. Fetch them first.
         const info = await enrich(t);
@@ -182,7 +231,7 @@ async function resolveNext(t: Track, order: string[], triedSources: Set<string>,
         // the same length. Music videos get a little slack for intros/outros.
         tol = info.videoType === 'MUSIC_VIDEO_TYPE_ATV' ? 4 : 10;
       }
-      const r = src === 'saavn' ? await resolveSaavn(t, undefined, q, tol) : await resolveYouTube(t.videoId, setNativeUserAgent, QUALITY_KBPS[q]);
+      const r = src === 'saavn' ? await resolveSaavn(t, undefined, q, tol) : await resolveYouTube(ytId, setNativeUserAgent, QUALITY_KBPS[q]);
       log('source', src, r ? `ok ${r.kbps}kbps ${r.url.slice(0, 60)}` : 'no match');
       if (r) { resolved.set(t.videoId, { r, src, at: Date.now() }); if (resolved.size > 40) resolved.delete(resolved.keys().next().value!); return r; }
       failReasons.push(`${src === 'saavn' ? 'JioSaavn' : 'YouTube'}: no match`);
@@ -201,7 +250,7 @@ async function resolveNext(t: Track, order: string[], triedSources: Set<string>,
 const resolved = new Map<string, { r: ResolvedStream; src: string; at: number }>();
 function takeResolved(t: Track, order: string[]): { r: ResolvedStream; src: string } | null {
   const hit = resolved.get(t.videoId);
-  if (!hit || Date.now() - hit.at > PREFETCH_TTL_MS || !order.includes(hit.src)) return null;
+  if (!hit || Date.now() - hit.at > PREFETCH_TTL_MS || !order.includes(hit.src) || triedSources.has(hit.src)) return null;
   // only use a lower-priority source if every source before it already failed
   if (order.slice(0, order.indexOf(hit.src)).some((x) => !triedSources.has(x))) return null;
   return hit;
@@ -213,15 +262,19 @@ async function prefetchNext() {
   if (!next || prefetchedFor === next.videoId) return;
   prefetchedFor = next.videoId;
   if (resolved.has(next.videoId) && Date.now() - resolved.get(next.videoId)!.at < PREFETCH_TTL_MS) return;
-  const order = await sourceOrder();
+  const order = ownFirst(next, await sourceOrder());
   log('prefetch', next.title);
   await resolveNext(next, order, new Set(), []).catch(() => null);
 }
+
+/** A song that carries its own JioSaavn stream plays that first. */
+const ownFirst = (t: Track, order: string[]) => (t.saavn && order.includes('saavn') ? ['saavn', ...order.filter((x) => x !== 'saavn')] : order);
 
 async function sourceOrder(): Promise<string[]> {
   return directOrder(await getSettings());
 }
 
+let staleRetried = '';
 let cachedSrc = ''; // the playing stream came from the resolved cache (may have expired)
 let pendingFade = 0; // seconds of crossfade for the load in flight
 async function startDirect(t: Track, token: number, startAt = 0): Promise<void> {
@@ -229,7 +282,7 @@ async function startDirect(t: Track, token: number, startAt = 0): Promise<void> 
   switchingToken = token;
   let r: ResolvedStream | null;
   try {
-    const order = await sourceOrder();
+    const order = ownFirst(t, await sourceOrder());
     const hit = takeResolved(t, order);
     if (hit) { triedSources.add(hit.src); r = hit.r; cachedSrc = hit.src; log('source', hit.src, 'cached'); }
     else { cachedSrc = ''; r = await resolveNext(t, order, triedSources, failReasons); }
@@ -317,7 +370,8 @@ async function advance(dir: 1 | -1, auto = false, fade = 0) {
     if (auto && state.repeat === 'off' && (await getSettings()).autoRadio && state.track) {
       try {
         const have = new Set(state.queue.map((x) => x.videoId));
-        const more = (await getQueue({ videoId: state.track.videoId })).filter((x) => !have.has(x.videoId));
+        const seed = ytOf(state.track) ?? (await matchYouTube(state.track));
+        const more = seed ? (await getQueue({ videoId: seed })).filter((x) => !have.has(x.videoId)) : [];
         if (more.length) { state.queue.push(...more.slice(0, 25)); state.index = i; return playCurrent(); }
       } catch { /* fall through */ }
     }
@@ -356,7 +410,7 @@ async function listenbrainz(kind: 'playing_now' | 'single') {
   const payload: Record<string, unknown> = {
     track_metadata: {
       artist_name: t.artists, track_name: t.title, release_name: t.album,
-      additional_info: { media_player: 'BitChord for Chrome', submission_client: 'BitChord for Chrome', origin_url: `https://music.youtube.com/watch?v=${t.videoId}`, duration_ms: state.duration ? Math.round(state.duration * 1000) : undefined },
+      additional_info: { media_player: 'BitChord for Chrome', submission_client: 'BitChord for Chrome', origin_url: ytOf(t) ? `https://music.youtube.com/watch?v=${ytOf(t)}` : undefined, duration_ms: state.duration ? Math.round(state.duration * 1000) : undefined },
     },
   };
   if (kind === 'single') payload.listened_at = Math.floor(Date.now() / 1000) - Math.round(state.position);
@@ -442,7 +496,8 @@ function onAudioEvent(m: any) {
     }
     if (t && switchingToken !== loadToken) {
       if (startTimer) { clearTimeout(startTimer); startTimer = null; }
-      if (cachedSrc) { triedSources.delete(cachedSrc); resolved.delete(t.videoId); cachedSrc = ''; } // stale link: look it up again
+      resolved.delete(t.videoId);
+      if (cachedSrc && staleRetried !== t.videoId) { staleRetried = t.videoId; triedSources.delete(cachedSrc); cachedSrc = ''; } // stale link: look it up again, once
       else failReasons.push(`${state.stream?.split(' ·')[0] ?? 'stream'}: ${String(m.message).slice(0, 60)}`);
       state.resolving = true; broadcast();
       audio({ cmd: 'stop' });

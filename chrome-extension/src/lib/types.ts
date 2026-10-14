@@ -9,6 +9,11 @@ export interface Track {
   duration?: string; // "3:24"
   /** browseId (UC…) of the lead artist, when the row links one */
   artistId?: string;
+  /** Discover: playable JioSaavn copy (videoId is then "jsv:<id>"; "itm:"/"dz:" ids are matched to YouTube Music at play time) */
+  saavn?: { enc: string; has320: boolean };
+  language?: string;
+  releaseDate?: string;
+  sources?: string[];
 }
 
 export type CardKind = 'album' | 'playlist' | 'artist' | 'video' | 'song';
@@ -89,6 +94,8 @@ export interface Settings {
   lastfmSecret: string;
   lastfmSession: string;
   lastfmUser: string;
+  /** Discover languages, in the order shown */
+  discoverLangs: string[];
   // Appearance
   theme: Theme;
   reduceMotion: boolean;
@@ -107,6 +114,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoRadio: true, hideVolume: false, crossfade: 0,
   eqOn: false, eqPreset: 'Flat', eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   lastfmKey: '', lastfmSecret: '', lastfmSession: '', lastfmUser: '',
+  discoverLangs: ['telugu', 'hindi', 'tamil', 'english'],
   theme: 'dark', reduceMotion: false, reduceBlur: false, syncedLyrics: true, blurLyrics: true,
   showStats: false, lyricsDebug: false,
 };
