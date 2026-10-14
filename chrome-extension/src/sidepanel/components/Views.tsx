@@ -1,0 +1,505 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { deleteImported, getImported, type ImportedPlaylist } from '../../lib/transfer/index';
+import type { Card, MoodChip, Shelf, Track } from '../../lib/types';
+import { getCardTracks, getCollection, getHome, getHomeMore, getLibraryPlaylists, getMoodCategory, getMoods, getNewReleases, search, sized, type SearchChip } from '../../lib/innertube';
+import { readCache, refresh } from '../../lib/cache';
+import { SearchBar } from './SearchBar';
+import { getLiked, getRecent } from '../../lib/history';
+import { send, useCached } from '../hooks';
+import { CardTile, playSongWithRadio, TrackRow } from './Items';
+import { Icon } from './Icon';
+
+
+export interface Ctx { activeId: string | null; onArtist: (n: string) => void; onOpen: (c: Card) => void }
+
+const HOUR = 60 * 60 * 1000;
+
+// ---------- loading / error ----------
+export function SkelRows({ n = 4 }: { n?: number }) {
+  return <div className="track-grid">{Array.from({ length: n }, (_, i) => <div key={i} className="skel-row"><span className="skel sq" /><span className="skel-lines"><span className="skel l1" /><span className="skel l2" /></span></div>)}</div>;
+}
+export function SkelCards({ n = 6, round = false }: { n?: number; round?: boolean }) {
+  return <div className="carousel">{Array.from({ length: n }, (_, i) => <div key={i} className="card"><span className={`skel card-sq ${round ? 'round' : ''}`} /><span className="skel l1" /><span className="skel l2" /></div>)}</div>;
+}
+function SkelTiles({ n = 8 }: { n?: number }) {
+  return <div className="tiles">{Array.from({ length: n }, (_, i) => <span key={i} className="skel tile-skel" />)}</div>;
+}
+function Err({ msg, retry }: { msg: string; retry?: () => void }) {
+  return (
+    <div className="err-box">
+      <span>{msg}</span>
+      {retry && <button className="pill sm ghost" onClick={retry}>Try again</button>}
+    </div>
+  );
+}
+
+function SectionHead({ title, sub, onMore, children }: { title: string; sub?: string; onMore?: () => void; children?: ReactNode }) {
+  return (
+    <div className="section-head">
+      <div>{sub && <div className="strap">{sub}</div>}<h2>{title}</h2></div>
+      <div className="head-actions">{children}{onMore && <button className="more" onClick={onMore}>See all</button>}</div>
+    </div>
+  );
+}
+
+// Horizontal scroller with arrow buttons (wide panel) and swipe (narrow).
+function Scroller({ children, className = 'carousel', title, sub, onMore }: { children: ReactNode; className?: string; title?: string; sub?: string; onMore?: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [edge, setEdge] = useState({ l: true, r: false });
+  const check = () => {
+    const el = ref.current;
+    if (el) setEdge({ l: el.scrollLeft < 4, r: el.scrollLeft + el.clientWidth >= el.scrollWidth - 4 });
+  };
+  useEffect(() => { check(); }, [children]);
+  const by = (d: number) => ref.current?.scrollBy({ left: d * (ref.current.clientWidth * 0.85), behavior: 'smooth' });
+  return (
+    <section className="section">
+      {title !== undefined && (
+        <SectionHead title={title} sub={sub} onMore={onMore}>
+          <button className="arrow" disabled={edge.l} onClick={() => by(-1)} aria-label="Scroll left"><Icon name="chev-left" size={18} /></button>
+          <button className="arrow" disabled={edge.r} onClick={() => by(1)} aria-label="Scroll right"><Icon name="chev-right" size={18} /></button>
+        </SectionHead>
+      )}
+      <div className={className} ref={ref} onScroll={check}>{children}</div>
+    </section>
+  );
+}
+
+function TrackGrid({ tracks, ctx, limit }: { tracks: Track[]; ctx: Ctx; limit?: number }) {
+  const list = limit ? tracks.slice(0, limit) : tracks;
+  return (
+    <div className="track-grid">
+      {list.map((t, i) => <TrackRow key={t.videoId + i} t={t} list={tracks} i={i} activeId={ctx.activeId} onArtist={ctx.onArtist} />)}
+    </div>
+  );
+}
+
+// YouTube Music's Quick Picks layout: columns of four rows that scroll sideways.
+function QuickGrid({ tracks, ctx, title, sub, onMore }: { tracks: Track[]; ctx: Ctx; title: string; sub?: string; onMore?: () => void }) {
+  return (
+    <Scroller className="quick-grid" title={title} sub={sub} onMore={onMore}>
+      {tracks.map((t, i) => <TrackRow key={t.videoId + i} t={t} activeId={ctx.activeId} onArtist={ctx.onArtist} />)}
+    </Scroller>
+  );
+}
+
+function ShelfView({ shelf, ctx }: { shelf: Shelf; ctx: Ctx }) {
+  return (
+    <>
+      {shelf.tracks.length > 0 && (shelf.tracks.length > 4
+        ? <QuickGrid tracks={shelf.tracks} ctx={ctx} title={shelf.title} />
+        : <section className="section"><SectionHead title={shelf.title} /><TrackGrid tracks={shelf.tracks} ctx={ctx} /></section>)}
+      {shelf.cards.length > 0 && (
+        <Scroller title={shelf.tracks.length ? '' : shelf.title}>
+          {shelf.cards.map((c, i) => <CardTile key={i} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} />)}
+        </Scroller>
+      )}
+    </>
+  );
+}
+
+function useStoredTracks(get: () => Promise<Track[]>, key: string) {
+  const [t, setT] = useState<Track[] | null>(null);
+  useEffect(() => {
+    get().then(setT);
+    const fn = (changes: Record<string, unknown>) => { if (key in changes) get().then(setT); };
+    chrome.storage.onChanged.addListener(fn);
+    return () => chrome.storage.onChanged.removeListener(fn);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return t;
+}
+
+// Square tile for Recently Played on Home
+function RecentTile({ t, list, i, active }: { t: Track; list: Track[]; i: number; active: boolean }) {
+  return (
+    <button className={`card ${active ? 'playing' : ''}`} onClick={() => send({ type: 'play-queue', tracks: list, index: i })} title={t.title}>
+      <div className="card-art">
+        <img src={t.thumbnail} alt="" loading="lazy" />
+        <span className="card-play"><Icon name={active ? 'eq' : 'play'} /></span>
+      </div>
+      <div className="card-title">{t.title}</div>
+      <div className="card-sub">{t.artists}</div>
+    </button>
+  );
+}
+
+// ---------- Explore tiles (BitChord style: solid colour, tilted cover art) ----------
+const artQueue: (() => void)[] = [];
+let artRunning = 0;
+function nextArt() {
+  while (artRunning < 3 && artQueue.length) { artRunning++; artQueue.shift()!(); }
+}
+function useMoodArt(chip: MoodChip, visible: boolean) {
+  const key = `moodart:${chip.browseId}:${chip.params}`;
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!visible) return;
+    let alive = true;
+    readCache<string>(key).then((hit) => {
+      if (!alive) return;
+      if (hit?.data) { setUrl(hit.data); return; }
+      artQueue.push(() => {
+        refresh(key, async () => {
+          const shelves = await getMoodCategory(chip);
+          return shelves.flatMap((s) => s.cards.map((c) => c.thumbnail).concat(s.tracks.map((t) => t.thumbnail))).find(Boolean) ?? '';
+        }).then((u) => alive && setUrl(u)).catch(() => {}).finally(() => { artRunning--; nextArt(); });
+      });
+      nextArt();
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, key]);
+  return url;
+}
+
+function MoodTile({ c, onPick }: { c: MoodChip; onPick: (c: MoodChip) => void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver((e) => { if (e.some((x) => x.isIntersecting)) { setSeen(true); io.disconnect(); } }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  const art = useMoodArt(c, seen);
+  return (
+    <button ref={ref} className="tile" style={{ ['--c' as string]: c.color }} onClick={() => onPick(c)}>
+      <span className="tile-title">{c.title}</span>
+      {art && <img className="tile-art" src={sized(art, 226)} alt="" loading="lazy" />}
+    </button>
+  );
+}
+
+export function MoodView({ chip, ctx, onBack }: { chip: MoodChip; ctx: Ctx; onBack: () => void }) {
+  const { data, error, loading, retry } = useCached(`mood:${chip.browseId}:${chip.params}`, () => getMoodCategory(chip), 6 * HOUR);
+  return (
+    <div>
+      <button className="back-btn" onClick={onBack} aria-label="Back"><Icon name="back" size={22} /></button>
+      <div className="mood-hero" style={{ ['--c' as string]: chip.color }}>
+        <h1>{chip.title}</h1>
+      </div>
+      {loading ? <><SkelCards /><SkelCards /></> : error ? <Err msg={error} retry={retry} /> : data!.map((s, i) => <ShelfView key={i} shelf={s} ctx={ctx} />)}
+    </div>
+  );
+}
+
+// ---------- Listen Now ----------
+function HeroCard({ c, ctx }: { c: Card; ctx: Ctx }) {
+  const [busy, setBusy] = useState(false);
+  const play = async (e: React.MouseEvent) => {
+    e.stopPropagation(); setBusy(true);
+    try { const t = await getCardTracks(c); if (t.length) await send({ type: 'play-queue', tracks: t, index: 0 }); } finally { setBusy(false); }
+  };
+  const open = () => (c.kind === 'artist' ? ctx.onArtist(c.title) : c.kind === 'album' || c.kind === 'playlist' ? ctx.onOpen(c) : play({ stopPropagation() {} } as React.MouseEvent));
+  return (
+    <button className="hero-card" onClick={open} title={c.title}>
+      <img src={sized(c.thumbnail, 544)} alt="" loading="lazy" />
+      <span className="hero-play" role="button" aria-label={`Play ${c.title}`} onClick={play}>{busy ? <span className="spinner sm" /> : <Icon name="play" size={16} />}</span>
+      <span className="hero-text"><span className="hero-title">{c.title}</span><span className="hero-sub">{c.subtitle}</span></span>
+    </button>
+  );
+}
+
+export function SignInBanner({ onSignIn }: { onSignIn: () => void }) {
+  return (
+    <div className="signin-card">
+      <div className="signin-text"><div className="signin-title">Sign in to YouTube Music</div><div className="signin-sub">Get personalized recommendations for you</div></div>
+      <button className="pill white" onClick={onSignIn}>Sign in</button>
+    </div>
+  );
+}
+
+export function ListenNow({ ctx, signedIn, session, onSignIn, onMood, goExplore }: {
+  ctx: Ctx; me: { name: string } | null; signedIn: boolean; session: string; onSignIn: () => void; onMood: (c: MoodChip) => void; goExplore: () => void;
+}) {
+  const [chip, setChip] = useState<{ title: string; params?: string } | null>(null);
+  // Keyed by session: signing in swaps the generic feed for your own at once.
+  const homeKey = `${chip ? `home:${chip.params}` : 'home'}:${session}`;
+  const home = useCached(session ? homeKey : null, () => getHome(chip?.params), 30 * 60 * 1000);
+  const more = useCached(home.data?.next ? `${homeKey}:more` : null, () => getHomeMore(home.data!.next!, chip ? 1 : 3), 30 * 60 * 1000);
+  const recent = useStoredTracks(getRecent, 'recentlyPlayed');
+  const chips = useRef<{ title: string; params?: string }[]>([]);
+  if (!chip && home.data?.chips.length) chips.current = home.data.chips;
+
+  const shelves = [...(home.data?.shelves ?? []), ...(more.data ?? [])].filter((s, i, a) => a.findIndex((x) => x.title === s.title) === i);
+  const heroIdx = shelves.findIndex((s) => s.cards.length >= 2 && !s.tracks.length);
+  const quick = shelves.find((s) => /quick picks/i.test(s.title) && s.tracks.length);
+
+  return (
+    <div>
+      {!signedIn && <SignInBanner onSignIn={onSignIn} />}
+      {chips.current.length > 0 && (
+        <div className="schips home-chips">
+          {chips.current.map((c) => (
+            <button key={c.title} className={`schip ${chip?.title === c.title ? 'on' : ''}`} onClick={() => setChip(chip?.title === c.title ? null : c)}>{c.title}</button>
+          ))}
+        </div>
+      )}
+      {home.loading ? <><span className="skel hero-skel" /><SkelRows n={4} /></> : home.error ? <Err msg={home.error} retry={home.retry} /> : (
+        shelves.map((s, i) => {
+          if (i === heroIdx) return (
+            <Scroller key={s.title} title={s.title} className="hero-row">
+              {s.cards.map((c, j) => <HeroCard key={j} c={c} ctx={ctx} />)}
+            </Scroller>
+          );
+          if (s === quick) return (
+            <div key={s.title}>
+              <QuickGrid tracks={s.tracks} ctx={ctx} title="Quick picks" sub="Start radio from a song" />
+              {!chip && recent && recent.length > 0 && (
+                <Scroller title="Recently played">
+                  {recent.slice(0, 20).map((t, k) => <RecentTile key={t.videoId} t={t} list={recent} i={k} active={ctx.activeId === t.videoId} />)}
+                </Scroller>
+              )}
+            </div>
+          );
+          return <ShelfView key={s.title + i} shelf={s} ctx={ctx} />;
+        })
+      )}
+      {!home.loading && more.loading && home.data?.next && <SkelCards />}
+      {!home.loading && !home.error && (
+        <button className="explore-more" onClick={goExplore}><Icon name="compass" size={18} /> Explore moods & genres</button>
+      )}
+      {void onMood}
+    </div>
+  );
+}
+
+// ---------- Explore ----------
+export function ExplorePage({ ctx, onMood }: { ctx: Ctx; onMood: (c: MoodChip) => void }) {
+  const moods = useCached('moods', getMoods, 24 * HOUR);
+  const fresh = useCached('new', getNewReleases, 6 * HOUR);
+  const firstNew = fresh.data?.find((s) => s.cards.length);
+  return (
+    <div>
+      {firstNew && (
+        <Scroller title="New releases">
+          {firstNew.cards.map((c, i) => <CardTile key={i} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} />)}
+        </Scroller>
+      )}
+      {moods.loading ? <SkelTiles n={10} /> : moods.error ? <Err msg={moods.error} retry={moods.retry} /> : moods.data!.map((g) => (
+        <section key={g.title} className="section">
+          <h2 className="group-title">{g.title}</h2>
+          <div className="tiles">{g.chips.map((c) => <MoodTile key={c.title} c={c} onPick={onMood} />)}</div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+// ---------- Library ----------
+export function LibraryPage({ ctx, me, signedIn, session, onSignIn, onTransfer }: { ctx: Ctx; me: { name: string } | null; signedIn: boolean; session: string; onSignIn: () => void; onTransfer: () => void }) {
+  const recent = useStoredTracks(getRecent, 'recentlyPlayed');
+  const liked = useStoredTracks(getLiked, 'liked');
+  const lists = useCached(signedIn ? `library:playlists:${session}` : null, getLibraryPlaylists, HOUR);
+  const [view, setView] = useState<string>('home');
+  const [imported, setImported] = useState<ImportedPlaylist[] | null>(null);
+  useEffect(() => {
+    getImported().then(setImported);
+    const fn = (c: Record<string, chrome.storage.StorageChange>) => { if (c.importedPlaylists) getImported().then(setImported); };
+    chrome.storage.onChanged.addListener(fn);
+    return () => chrome.storage.onChanged.removeListener(fn);
+  }, []);
+  const imp = view.startsWith('imp:') ? imported?.find((p) => p.id === view.slice(4)) : null;
+  if (imp) {
+    return (
+      <div>
+        <button className="back-btn inline" onClick={() => setView('home')}><Icon name="back" size={20} /> Library</button>
+        <h2 className="sub-title">{imp.title}</h2>
+        <p className="row-sub" style={{ margin: '-6px 0 12px' }}>From {imp.source} · {imp.tracks.length} songs{imp.missed.length ? ` · ${imp.missed.length} not found` : ''}{imp.ytmPlaylistId ? ' · also in YouTube Music' : ''}</p>
+        <div className="coll-actions top">
+          <button className="pill white" disabled={!imp.tracks.length} onClick={() => send({ type: 'play-queue', tracks: imp.tracks, index: 0 })}><Icon name="play" size={16} /> Play</button>
+          <button className="pill ghost" onClick={async () => { if (confirm(`Remove "${imp.title}" from BitChord?`)) { await deleteImported(imp.id); setView('home'); } }}><Icon name="trash" size={16} /> Remove</button>
+        </div>
+        <TrackGrid tracks={imp.tracks} ctx={ctx} />
+      </div>
+    );
+  }
+  if (view === 'liked' || view === 'recent') {
+    const list = view === 'liked' ? liked : recent;
+    return (
+      <div>
+        <button className="back-btn inline" onClick={() => setView('home')}><Icon name="back" size={20} /> Library</button>
+        <h2 className="sub-title">{view === 'liked' ? 'Liked songs' : 'Recently played'}</h2>
+        {!list ? <SkelRows /> : list.length ? (
+          <>
+            <div className="coll-actions top"><button className="pill white" onClick={() => send({ type: 'play-queue', tracks: list, index: 0 })}><Icon name="play" size={16} /> Play</button></div>
+            <TrackGrid tracks={list} ctx={ctx} />
+          </>
+        ) : <div className="empty-state"><p>Nothing here yet.</p></div>}
+      </div>
+    );
+  }
+  return (
+    <div>
+      {!signedIn && <SignInBanner onSignIn={onSignIn} />}
+      <div className="group">
+        <button className="row" onClick={() => setView('liked')}>
+          <span className="row-icon liked"><Icon name="heart" size={18} /></span>
+          <span className="row-text"><span className="row-title">Liked songs</span><span className="row-sub">{liked?.length ?? 0} {liked?.length === 1 ? 'song' : 'songs'}</span></span>
+          <Icon name="chev-right" size={20} />
+        </button>
+        <button className="row" onClick={() => setView('recent')}>
+          <span className="row-icon"><Icon name="history" size={18} /></span>
+          <span className="row-text"><span className="row-title">Recently played</span><span className="row-sub">{recent?.length ?? 0} {recent?.length === 1 ? 'song' : 'songs'}</span></span>
+          <Icon name="chev-right" size={20} />
+        </button>
+        {imported?.map((p) => (
+          <button key={p.id} className="row" onClick={() => setView(`imp:${p.id}`)}>
+            <span className="row-icon">{p.image ? <img src={p.image} alt="" referrerPolicy="no-referrer" /> : <Icon name="queue" size={18} />}</span>
+            <span className="row-text"><span className="row-title">{p.title}</span><span className="row-sub">{p.source} · {p.tracks.length} songs</span></span>
+            <Icon name="chev-right" size={20} />
+          </button>
+        ))}
+        <button className="row" onClick={onTransfer}>
+          <span className="row-icon"><Icon name="swap" size={18} /></span>
+          <span className="row-text"><span className="row-title">Transfer music</span><span className="row-sub">From Spotify or Apple Music</span></span>
+          <Icon name="chev-right" size={20} />
+        </button>
+      </div>
+      {recent && recent.length > 0 && (
+        <Scroller title="Jump back in">
+          {recent.slice(0, 16).map((t, k) => <RecentTile key={t.videoId} t={t} list={recent} i={k} active={ctx.activeId === t.videoId} />)}
+        </Scroller>
+      )}
+      {signedIn && (lists.loading ? <SkelCards /> : lists.data?.length ? (
+        <section className="section">
+          <SectionHead title="Your playlists" sub="YouTube Music" />
+          <div className="card-grid">{lists.data.map((c, i) => <CardTile key={i} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} />)}</div>
+        </section>
+      ) : null)}
+    </div>
+  );
+}
+
+// ---------- Search tab ----------
+export function SearchPage({ ctx, query, onSearch, onMood }: { ctx: Ctx; query: string | null; onSearch: (q: string) => void; onMood: (c: MoodChip) => void }) {
+  const moods = useCached(query ? null : 'moods', getMoods, 24 * HOUR);
+  return (
+    <div>
+      <SearchBar value={query} onSearch={onSearch} onOpen={ctx.onOpen} onArtist={ctx.onArtist} autoFocus={!query} />
+      {query ? <SearchView q={query} ctx={ctx} /> : (
+        <section className="section">
+          <h2 className="group-title">Browse categories</h2>
+          {moods.loading ? <SkelTiles n={8} /> : <div className="tiles">{(moods.data?.flatMap((g) => g.chips) ?? []).slice(0, 12).map((c) => <MoodTile key={c.title} c={c} onPick={onMood} />)}</div>}
+        </section>
+      )}
+    </div>
+  );
+}
+
+// ---------- Search ----------
+export function SearchView({ q, ctx }: { q: string; ctx: Ctx }) {
+  const [chip, setChip] = useState<SearchChip | null>(null);
+  const [chips, setChips] = useState<SearchChip[]>([]);
+  useEffect(() => { setChip(null); setChips([]); }, [q]);
+  const { data, error, loading, retry } = useCached(`search:${q}:${chip?.params ?? ''}`, () => search(q, chip?.params), 30 * 60 * 1000);
+  useEffect(() => { if (!chip && data?.chips.length) setChips(data.chips); }, [data, chip]);
+
+  const top = data?.shelves.find((s) => s.title === 'Top result');
+  const rest = data?.shelves.filter((s) => s !== top) ?? [];
+  const chipFor = (title: string) => chips.find((c) => c.title.toLowerCase().startsWith(title.toLowerCase().replace(/s$/, '')));
+
+  return (
+    <div>
+      {chips.length > 0 && (
+        <div className="schips" role="tablist">
+          <button className={`schip ${!chip ? 'on' : ''}`} onClick={() => setChip(null)}>All</button>
+          {chips.map((c) => (
+            <button key={c.title} className={`schip ${chip?.title === c.title ? 'on' : ''}`} onClick={() => setChip(c)}>{c.title}</button>
+          ))}
+        </div>
+      )}
+      {loading ? <><SkelRows n={3} /><SkelCards /></> : error ? <Err msg={error} retry={retry} /> : !data!.shelves.length ? (
+        <div className="empty-state"><Icon name="search" size={28} /><p>No results for “{q}”. Try fewer words, or check the spelling.</p></div>
+      ) : chip ? (
+        rest.map((s, i) => (
+          <section key={i} className="section">
+            {s.tracks.length > 0 && <TrackGrid tracks={s.tracks} ctx={ctx} />}
+            {s.cards.length > 0 && <div className="card-grid">{s.cards.map((c, j) => <CardTile key={j} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} />)}</div>}
+          </section>
+        ))
+      ) : (
+        <>
+          {top && <TopResult shelf={top} ctx={ctx} />}
+          {rest.map((s, i) => {
+            const more = chipFor(s.title);
+            return s.tracks.length ? (
+              <section key={i} className="section">
+                <SectionHead title={s.title} onMore={more ? () => setChip(more) : undefined} />
+                <TrackGrid tracks={s.tracks} ctx={ctx} limit={4} />
+              </section>
+            ) : (
+              <Scroller key={i} title={s.title} onMore={more ? () => setChip(more) : undefined}>
+                {s.cards.map((c, j) => <CardTile key={j} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} />)}
+              </Scroller>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
+function TopResult({ shelf, ctx }: { shelf: Shelf; ctx: Ctx }) {
+  const card = shelf.cards[0];
+  const lead = card ? null : shelf.tracks[0];
+  const songs = card ? shelf.tracks : shelf.tracks.slice(1);
+  const art = card?.thumbnail ?? lead?.thumbnail ?? '';
+  const open = () => (card ? (card.kind === 'artist' ? ctx.onArtist(card.title) : ctx.onOpen(card)) : lead && playSongWithRadio(lead));
+  return (
+    <section className="section top-result">
+      <SectionHead title="Top result" />
+      <div className={`top-wrap ${songs.length ? '' : 'solo'}`}>
+        <div className="top-card" onClick={open} role="button" tabIndex={0}>
+          <img className={card?.kind === 'artist' ? 'round' : ''} src={art} alt="" />
+          <div className="top-info">
+            <div className="top-title">{card?.title ?? lead?.title}</div>
+            <div className="top-sub">{card ? card.subtitle : `Song · ${lead?.artists}`}</div>
+            <button className="pill sm" onClick={(e) => {
+              e.stopPropagation();
+              if (lead) playSongWithRadio(lead);
+              else if (songs.length) send({ type: 'play-queue', tracks: songs, index: 0 });
+              else open();
+            }}><Icon name="play" size={14} /> Play</button>
+          </div>
+        </div>
+        {songs.length > 0 && <div className="top-songs"><TrackGrid tracks={songs} ctx={ctx} limit={4} /></div>}
+      </div>
+    </section>
+  );
+}
+
+// ---------- Album / playlist ----------
+export function CollectionView({ card, ctx, onBack }: { card: Card; ctx: Ctx; onBack: () => void }) {
+  const { data, error, loading, retry } = useCached(`coll:${card.browseId ?? card.playlistId ?? card.title}`, () => getCollection(card), HOUR);
+  return (
+    <div>
+      <button className="back-btn" onClick={onBack} aria-label="Back"><Icon name="back" size={22} /></button>
+      {loading ? (
+        <><div className="coll-head"><span className="skel coll-skel" /><div className="coll-info"><span className="skel l1" /><span className="skel l2" /></div></div><SkelRows n={8} /></>
+      ) : error ? <Err msg={error} retry={retry} /> : (
+        <>
+          <div className="coll-head">
+            <img src={data!.thumbnail} alt="" />
+            <div className="coll-info">
+              <div className="coll-kind">{data!.subtitle}</div>
+              <h1 className="coll-title">{data!.title}</h1>
+              {data!.artist && <div className="coll-artist link" onClick={() => ctx.onArtist(data!.artist)}>{data!.artist}</div>}
+              <div className="coll-meta">{data!.meta}</div>
+              <div className="coll-actions">
+                <button className="pill" disabled={!data!.tracks.length} onClick={() => send({ type: 'play-queue', tracks: data!.tracks, index: 0 })}><Icon name="play" size={16} /> Play</button>
+                <button className="pill ghost" disabled={!data!.tracks.length} onClick={() => {
+                  const t = [...data!.tracks]; for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [t[i], t[j]] = [t[j], t[i]]; }
+                  send({ type: 'play-queue', tracks: t, index: 0 });
+                }}><Icon name="shuffle" size={16} /> Shuffle</button>
+              </div>
+            </div>
+          </div>
+          {data!.tracks.length ? <TrackGrid tracks={data!.tracks} ctx={ctx} /> : <div className="hint">No playable tracks.</div>}
+        </>
+      )}
+    </div>
+  );
+}

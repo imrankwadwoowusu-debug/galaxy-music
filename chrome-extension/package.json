@@ -1,0 +1,27 @@
+{
+  "name": "bitchord-extension",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && vite build && node scripts/build-scripts.mjs",
+    "dev": "vite build --watch",
+    "zip": "cd dist && zip -r ../bitchord-extension.zip ."
+  },
+  "dependencies": {
+    "crypto-js": "^4.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.5",
+    "@types/crypto-js": "^4.2.2",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vite": "^5.4.21"
+  }
+}
