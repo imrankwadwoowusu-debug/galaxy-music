@@ -1,13 +1,16 @@
-name: Android CI
+name: Android Release APK
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   # The repo ships no service endpoints, client identities, or link hosts —
   # those arrive in a user-imported service file. This gate fails the build
-  # if a quoted corp URL literal creeps back into app code. Allowed: the
-  # auth guard suffixes in ServiceConfig.kt (bare suffixes, no URLs) and the
-  # manifest's link-routing hosts.
+  # if a quoted corp URL literal creeps back into app or shared code.
+  # Allowed: the auth guard suffixes in ServiceConfig.kt (bare suffixes, no
+  # URLs) and the manifest's link-routing hosts.
   service-literal-gate:
     runs-on: ubuntu-latest
 
@@ -18,58 +21,30 @@ jobs:
     - name: Reject shipped service literals
       run: |
         # Excluded: BotGuard PoToken mechanism endpoints (inseparable from the
-        # proof-of-origin flow, carry no client identities or keys) and the
-        # lyrics transliteration helper (unauthenticated public utility).
-        if grep -rn '"https\?://[^"]*\(youtube\.com\|youtu\.be\|googlevideo\.com\|google\.com\)' app/src/main --include='*.kt' | grep -v 'data/service/ServiceConfig.kt' | grep -v 'data/innertube/potoken/' | grep -v 'data/lyrics/LyricsTranslation.kt'; then
+        # proof-of-origin flow, carry no client identities or keys), the lyrics
+        # transliteration helper (unauthenticated public utility), and the
+        # on-disk cache classifier (matches hosts of files already downloaded,
+        # never contacts them).
+        if grep -rn '"https\?://[^"]*\(youtube\.com\|youtu\.be\|googlevideo\.com\|google\.com\)' app/src/main shared/src --include='*.kt' | grep -v 'data/service/ServiceConfig.kt' | grep -v 'data/innertube/potoken/' | grep -v 'data/lyrics/LyricsTranslation.kt' | grep -v 'playback/AudioCache.kt'; then
           echo "Quoted service URL literals do not belong in app code; put them in the service file."
           exit 1
         fi
-        if grep -rn '"[^"]*accounts\.google\.com[^"]*"\|"[^"]*ServiceLogin[^"]*"' app/src/main --include='*.kt'; then
+        if grep -rn '"[^"]*accounts\.google\.com[^"]*"\|"[^"]*ServiceLogin[^"]*"' app/src/main shared/src --include='*.kt'; then
           echo "Login endpoint literals do not belong in app code; put them in the service file."
           exit 1
         fi
         # SourceRegistry.kt is excluded: it holds the one-time JIOSAAVN ->
         # CATALOGUE stored-config migration, which is the documented way that
-        # old name leaves the tree. Remove the exclusion when the shim goes.
-        if grep -rni 'jiosaavn\|saavncdn\|api\.php' app/src/main --include='*.kt' | grep -v 'data/sources/SourceRegistry.kt'; then
+        # old name leaves the tree. AudioCache.kt is excluded for its
+        # on-disk cache classifier, which matches hosts of files already
+        # downloaded and never contacts them. Remove the exclusions when the
+        # shims go.
+        if grep -rni 'jiosaavn\|saavncdn\|api\.php' app/src/main shared/src --include='*.kt' | grep -v 'data/sources/SourceRegistry.kt' | grep -v 'playback/AudioCache.kt'; then
           echo "Catalogue provider literals do not belong in app code; put them in the service file."
           exit 1
         fi
 
-  build-dev-debug:
-    if: github.ref != 'refs/heads/main'
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
-
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: gradle
-
-    - name: Setup local.properties
-      run: |
-        echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
-        echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
-
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-
-    - name: Build Dev Debug APK
-      run: ./gradlew assembleDevDebug
-
-    - name: Upload APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: bitchord-dev-debug
-        path: app/build/outputs/apk/dev/debug/*.apk
-
   build-prod-release:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
@@ -89,10 +64,12 @@ jobs:
         echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
 
         echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > bitchord-release.jks
-        echo "storeFile=bitchord-release.jks" > keystore.properties
-        echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> keystore.properties
-        echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> keystore.properties
-        echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> keystore.properties
+        {
+          echo "storeFile=bitchord-release.jks"
+          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}"
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}"
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}"
+        } > keystore.properties
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew

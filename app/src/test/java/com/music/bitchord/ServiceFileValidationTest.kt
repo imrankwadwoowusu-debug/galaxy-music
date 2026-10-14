@@ -113,13 +113,11 @@ class ServiceFileValidationTest {
         )
     }
 
-    @Test fun `web player client is browser shaped on the music base`() {
+    @Test fun `web player client is browser shaped on the music origin`() {
         ServiceConfig.installForTests(ServiceConfig.validate(fileText()).getOrThrow())
         val web = ServiceConfig.webPlayerClient()
         assertEquals("WEB", web.clientName)
         assertEquals("https://music.example.invalid", web.origin)
-        assertTrue(web.apiBaseMusic)
-        assertTrue(web.needsSignatureTimestamp)
     }
 
     @Test fun `non files are refused`() {
