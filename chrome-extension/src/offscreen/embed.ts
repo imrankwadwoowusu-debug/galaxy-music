@@ -25,6 +25,11 @@ let lastTime = 0;
 let endedFor = '';
 let tick: ReturnType<typeof setInterval> | null = null;
 let volume = 100;
+let expect = 0; // catalogue length of the song, seconds (0 = unknown)
+let inAd = false;
+let loadedAt = 0;
+let fadeTimer: ReturnType<typeof setInterval> | null = null;
+function stopFade() { if (fadeTimer) { clearInterval(fadeTimer); fadeTimer = null; } }
 
 export const embedActive = () => token !== -1;
 export const embedToken = () => token;
@@ -40,7 +45,7 @@ function listen() {
 
 /** Position estimated between YouTube's reports (it sends them about 4 times a second). */
 function position() {
-  return st.state === PLAYING ? st.time + (performance.now() - st.at) / 1000 : st.time;
+  return st.state === PLAYING && !inAd ? st.time + (performance.now() - st.at) / 1000 : st.time;
 }
 function report(kind: string, extra: Record<string, unknown> = {}) {
   if (token === -1) return;
@@ -68,17 +73,29 @@ window.addEventListener('message', (e) => {
   if (d.event === 'infoDelivery' || d.event === 'initialDelivery' || d.event === 'onStateChange') {
     const vid = info.videoData?.video_id;
     if (vid) st.vid = vid;
+    // Until this video's own id is seen, reports belong to the previous one.
+    if (!st.vid && performance.now() - loadedAt < 3000) return;
     if (st.vid && st.vid !== videoId) return; // the end card of the previous song, or YouTube's own autoplay
-    if (typeof info.currentTime === 'number') { st.time = info.currentTime; st.at = performance.now(); }
-    if (typeof info.duration === 'number' && info.duration > 0) st.duration = info.duration;
+    // A pre-roll ad reports its own (short) length under the song's id: hold
+    // the clock at the start so the bar, lyrics and "ended" follow the song.
+    if (typeof info.duration === 'number' && info.duration > 0 && expect > 60) {
+      const was = inAd;
+      // only a much SHORTER length is an ad; a longer one is a music video's intro/outro
+      inAd = expect - info.duration > Math.max(20, expect * 0.15);
+      if (was && !inAd) st.time = 0;
+    }
+    if (!inAd) {
+      if (typeof info.currentTime === 'number') { st.time = info.currentTime; st.at = performance.now(); }
+      if (typeof info.duration === 'number' && info.duration > 0) st.duration = info.duration;
+    }
     if (typeof info.muted === 'boolean') st.muted = info.muted;
     const ps = typeof d.info === 'number' ? d.info : info.playerState;
     if (typeof ps === 'number' && ps !== st.state) {
       st.state = ps;
       st.at = performance.now();
-      if (ps === PLAYING) { if (st.muted) post('unMute'); post('setVolume', [volume]); report('playing'); }
+      if (ps === PLAYING) { if (endedFor === videoId) endedFor = ''; /* replayed */ if (st.muted) post('unMute'); post('setVolume', [volume]); report('playing'); }
       else if (ps === PAUSED) report('pause');
-      else if (ps === ENDED && endedFor !== videoId) { endedFor = videoId; report('ended'); }
+      else if (ps === ENDED && !inAd && endedFor !== videoId) { endedFor = videoId; report('ended'); }
       else report('time');
     }
   }
@@ -101,7 +118,11 @@ function ensureFrame(id: string, startAt: number) {
   return true;
 }
 
-export function embedLoad(msg: { embed: string; token: number; volume?: number; startAt?: number }, emit: Emit) {
+export function embedLoad(msg: { embed: string; token: number; volume?: number; startAt?: number; expect?: number }, emit: Emit) {
+  expect = msg.expect ?? 0;
+  inAd = false;
+  loadedAt = performance.now();
+  stopFade();
   emitFn = emit;
   token = msg.token;
   videoId = msg.embed;
@@ -115,7 +136,7 @@ export function embedLoad(msg: { embed: string; token: number; volume?: number; 
   post('playVideo');
   // Progress for the panel, lyrics and scrobbling, at the same rate as <audio>.
   if (!tick) tick = setInterval(() => {
-    if (token === -1 || st.state !== PLAYING) return;
+    if (token === -1 || st.state !== PLAYING || inAd) return;
     const n = performance.now();
     if (n - lastTime > 400) { lastTime = n; report('time'); }
     // Belt and braces: some embeds never send "ended" while hidden.
@@ -124,6 +145,8 @@ export function embedLoad(msg: { embed: string; token: number; volume?: number; 
 }
 
 export function embedCommand(cmd: string, msg: { seconds?: number; value?: number; ms?: number }) {
+  if (cmd !== 'volume' && cmd !== 'seek') stopFade();
+  if (cmd === 'seek') endedFor = '';
   switch (cmd) {
     case 'play': post('playVideo'); break;
     case 'pause': post('pauseVideo'); break;
@@ -134,9 +157,9 @@ export function embedCommand(cmd: string, msg: { seconds?: number; value?: numbe
       // step the volume down, then pause and restore it for the next play
       const from = volume, steps = 20, ms = msg.ms ?? 4000;
       let i = 0;
-      const t = setInterval(() => {
+      fadeTimer = setInterval(() => {
         i++; post('setVolume', [Math.round(from * (1 - i / steps))]);
-        if (i >= steps) { clearInterval(t); post('pauseVideo'); post('setVolume', [from]); }
+        if (i >= steps) { stopFade(); post('pauseVideo'); post('setVolume', [from]); }
       }, ms / steps);
       break;
     }
@@ -144,6 +167,8 @@ export function embedCommand(cmd: string, msg: { seconds?: number; value?: numbe
 }
 
 export function embedStop() {
+  stopFade();
+  if (tick) { clearInterval(tick); tick = null; }
   if (token === -1) return;
   token = -1;
   post('stopVideo');

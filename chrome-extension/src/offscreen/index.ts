@@ -9,6 +9,8 @@
 // header for the extension). If that fails, or the AudioContext can't run,
 // the slot plays as a plain element and only the equalizer is skipped.
 import { EQ_BANDS } from '../lib/types';
+const SW_URL = chrome.runtime.getURL('background.js');
+let newestLoad = -1;
 import { embedActive, embedCommand, embedLoad, embedStop, embedToken } from './embed';
 
 interface Slot { el: HTMLAudioElement; token: number; gain: GainNode | null; src: MediaElementAudioSourceNode | null; ramp: ReturnType<typeof setInterval> | null; vol: number; metaReady: boolean; plainRetry: boolean }
@@ -160,8 +162,14 @@ async function load(msg: LoadMsg, plain = false) {
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
-  if (msg?.target !== 'offscreen' || sender.id !== chrome.runtime.id || sender.tab) return; // only the service worker drives audio
+  // Only the service worker drives audio: not the side panel, not a tab.
+  if (msg?.target !== 'offscreen' || sender.id !== chrome.runtime.id || sender.tab || (sender.url && sender.url !== SW_URL)) return;
   const a = active?.el;
+  // Loads can cross in flight when Next is pressed rapidly: never let an older one win.
+  if (msg.cmd === 'load' && typeof msg.token === 'number') {
+    if (msg.token < newestLoad) { reply?.({ ok: false, stale: true }); return; }
+    newestLoad = msg.token;
+  }
   if (msg.cmd === 'load' && msg.embed) {
     // Hand over to the YouTube player: silence whatever <audio> was playing.
     const s = active; active = null;

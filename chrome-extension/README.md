@@ -187,6 +187,18 @@ Accessibility
 Speed
 - Rows and cards are memoised and the app's callbacks are stable, so player ticks no longer re-render every list. Long playlists render 100 songs at a time. Lyrics tick at frame rate only for the line being sung. Cache writes no longer read all of storage. The user's own YouTube Music tabs no longer message BitChord every second.
 
+## v0.9.1 (14 Oct 2026): audit of v0.9
+
+- Play after a long pause works again: Chrome closes an idle audio page after ~30 s of silence, so Play now reloads the song where it was. The load token and position survive the service worker sleeping, so events from a surviving player are no longer dropped.
+- The offscreen page is created once even when several commands arrive together (uses `runtime.getContexts`, Chrome 116+).
+- Rapid Next presses can no longer let an older song's load win (token re-checked; the player ignores older loads).
+- Sleep timer: a song ending during the fade-out no longer starts the next one; the YouTube player's fade is cancelled by any new command.
+- No crossfade on the YouTube player (it used to cut up to 12 s off the end).
+- YouTube player: pre-roll ads are detected by a much shorter length than the song, so the bar, lyrics and "ended" follow the song; replays and seeks report "ended" again; leftover reports from the previous video are ignored.
+- Watchdog respects a pause pressed before the song starts, and also guards the mid-song reload.
+- Lyrics: titles match by whole words ("Hero" no longer matches "Superhero"); the lookup waits for the song's length when the catalogue lacks it; failed lookups are not cached; LRCLIB keeps plain lyrics when its timings don't fit.
+- Security: only the service worker can drive the player, only the player page can send audio events, and every message channel is answered. The `tabs` permission is dropped. v0.8's helper tab is found by its sessionStorage mark and closed on upgrade.
+
 ## v0.9.0 (14 Oct 2026): correct lyrics, and no more YouTube Music tab
 Lyrics
 - Root cause of identical/random lyrics: Musixmatch answers unauthorised clients with the same decoy text ("Wob gopini den…") for every song, and KuGou, LRCLIB and LyricsPlus answers were taken without checking which song they were for.

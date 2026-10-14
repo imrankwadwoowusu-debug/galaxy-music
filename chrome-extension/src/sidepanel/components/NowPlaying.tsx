@@ -76,16 +76,22 @@ function LyricsPane({ s, settings }: { s: PlayerState; settings: Settings }) {
   const [ly, setLy] = useState<Lyrics | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const t = s.track;
+  // The song's length lets every lyrics answer be checked; when the catalogue
+  // row doesn't carry it, wait (briefly) for the player to report it.
+  const len = toSeconds(t?.duration) || (s.duration > 0 ? Math.round(s.duration) : 0);
+  const hasLen = len > 0;
   useEffect(() => {
     let alive = true; // a slow lookup for the previous song must not land on this one
     setLy(null);
-    // the catalogue length is known up front; the player's arrives a moment later
-    if (t) getLyrics(t.title, t.artists, toSeconds(t.duration) || s.duration || undefined, t.album)
+    if (!t) return;
+    const run = () => getLyrics(t.title, t.artists, len || undefined, t.album)
       .then((l) => alive && setLy(l))
       .catch(() => alive && setLy({ synced: null, plain: null }));
-    return () => { alive = false; };
+    const wait = hasLen ? null : setTimeout(run, 3000);
+    if (hasLen) run();
+    return () => { alive = false; if (wait) clearTimeout(wait); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t?.videoId]);
+  }, [t?.videoId, hasLen]);
   const lines = settings.syncedLyrics ? ly?.synced : null;
   const cur = lines ? lines.findLastIndex((l) => l.time <= pos + 0.25) : -1;
   useEffect(() => {

@@ -36,7 +36,7 @@ const restored: Promise<void> = restore();
 
 // Settings, kept in memory: read on every audio tick (crossfade, scrobbling).
 let cfg: Settings = { ...DEFAULT_SETTINGS };
-const cfgReady = getSettings().then((x) => { cfg = x; });
+void getSettings().then((x) => { cfg = x; });
 chrome.storage.onChanged.addListener((c) => {
   if (!c.settings) return;
   getSettings().then((x) => {
@@ -62,7 +62,7 @@ function log(...a: unknown[]) {
 async function restore() {
   const [local, session] = await Promise.all([
     chrome.storage.local.get(['queue', 'index', 'shuffle', 'repeat', 'volume']),
-    chrome.storage.session.get(['helperTabId', 'engine', 'sleepAt', 'sleepEndOfTrack']),
+    chrome.storage.session.get(['engine', 'sleepAt', 'sleepEndOfTrack', 'loadToken', 'position', 'duration']),
   ]);
   state.queue = (local.queue as Track[]) ?? [];
   state.index = (local.index as number) ?? -1;
@@ -72,6 +72,13 @@ async function restore() {
   state.track = state.queue[state.index] ?? null;
   state.videoId = state.track?.videoId ?? null;
   state.engine = (session.engine as PlayerState['engine']) ?? null;
+  // The worker sleeps after ~30 s idle; the offscreen player may outlive it.
+  // Keep the same load token so its events are still accepted, and the
+  // position so Play can pick the song up where it was.
+  loadToken = (session.loadToken as number) ?? 0;
+  startedToken = loadToken;
+  state.position = (session.position as number) ?? 0;
+  state.duration = (session.duration as number) ?? 0;
   // Upgrading from v0.8: close the old pinned YouTube Music helper tab for good.
   closeOldHelperTabs();
   if (state.engine !== 'direct') state.engine = null;
@@ -83,8 +90,17 @@ async function restore() {
 async function closeOldHelperTabs() {
   try {
     const tabs = await chrome.tabs.query({ url: 'https://music.youtube.com/*' });
-    const old = tabs.filter((t) => /[?&]bchelper=1/.test(t.url ?? t.pendingUrl ?? '')).map((t) => t.id!).filter((id) => id != null);
-    if (old.length) await chrome.tabs.remove(old);
+    for (const t of tabs) {
+      if (t.id == null) continue;
+      // v0.8 marked its helper tab in the page's sessionStorage (the URL
+      // flag disappears once the tab moves to another song).
+      let helper = /[?&]bchelper=1/.test(t.url ?? t.pendingUrl ?? '');
+      if (!helper) {
+        const [r] = await chrome.scripting.executeScript({ target: { tabId: t.id }, func: () => sessionStorage.getItem('bc-helper') === '1' }).catch(() => [] as chrome.scripting.InjectionResult<boolean>[]);
+        helper = !!r?.result;
+      }
+      if (helper) await chrome.tabs.remove(t.id).catch(() => {});
+    }
   } catch { /* ignore */ }
   chrome.storage.session.remove('helperTabId').catch(() => {});
   chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [20] }).catch(() => {});
@@ -92,7 +108,7 @@ async function closeOldHelperTabs() {
 
 function persist() {
   chrome.storage.local.set({ queue: state.queue, index: state.index, shuffle: state.shuffle, repeat: state.repeat, volume: state.volume });
-  chrome.storage.session.set({ engine: state.engine });
+  chrome.storage.session.set({ engine: state.engine, loadToken, position: state.position, duration: state.duration });
 }
 
 let bTimer: ReturnType<typeof setTimeout> | null = null;
@@ -105,20 +121,29 @@ function broadcast() {
 }
 
 // ---------- offscreen audio ----------
-async function ensureOffscreen() {
-  const has = await chrome.offscreen.hasDocument?.();
-  if (has) return;
+// Chrome 116+: getContexts (offscreen.hasDocument only arrived much later).
+async function offscreenAlive(): Promise<boolean> {
   try {
-    await chrome.offscreen.createDocument({
-      url: 'offscreen.html',
-      reasons: [chrome.offscreen.Reason.AUDIO_PLAYBACK],
-      justification: 'Play music while the BitChord side panel is closed',
-    });
-    await cfgReady;
-    await chrome.runtime.sendMessage({ target: 'offscreen', cmd: 'eq', on: false, gains: cfg.eqGains }).catch(() => {});
-  } catch (e) {
-    if (!String(e).includes('single offscreen')) throw e;
-  }
+    const c = await chrome.runtime.getContexts({ contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT] });
+    return c.length > 0;
+  } catch { return !!(await chrome.offscreen.hasDocument?.()); }
+}
+let creatingOffscreen: Promise<void> | null = null;
+async function ensureOffscreen() {
+  if (await offscreenAlive()) return;
+  // Two commands at once must share one creation, or the second is dropped.
+  creatingOffscreen ??= (async () => {
+    try {
+      await chrome.offscreen.createDocument({
+        url: 'offscreen.html',
+        reasons: [chrome.offscreen.Reason.AUDIO_PLAYBACK],
+        justification: 'Play music while the BitChord side panel is closed',
+      });
+    } catch (e) {
+      if (!String(e).includes('single offscreen')) throw e;
+    } finally { creatingOffscreen = null; }
+  })();
+  await creatingOffscreen;
 }
 async function audio(cmd: Record<string, unknown>) {
   await ensureOffscreen();
@@ -129,6 +154,7 @@ async function audio(cmd: Record<string, unknown>) {
 // When no direct stream works, the song plays in a hidden YouTube player that
 // lives in BitChord's own offscreen page: same controls, same queue, no tab.
 let embedTried = new Set<string>();
+let onEmbed = false; // the current song plays in the YouTube player (no crossfade there)
 /** Another upload of the same recording (Topic channel, lyric video) when one refuses to embed. */
 async function alternateYouTube(t: Track): Promise<string | undefined> {
   const lead = t.artists.split(/,|&/)[0].trim();
@@ -147,11 +173,13 @@ async function playEmbed(t: Track, token: number, startAt = 0): Promise<boolean>
   if (!id) return false;
   embedTried.add(id);
   log('embed', t.title, id);
+  onEmbed = true;
   state.engine = 'direct';
   state.stream = 'YouTube player · in BitChord';
   state.resolving = false;
   lastStream = ''; // nothing to reload by URL: errors go back through the chain
-  await audio({ cmd: 'load', embed: id, token, volume: state.volume, startAt, meta: { title: t.title, artist: t.artists, album: t.album, artwork: t.thumbnail } });
+  // The catalogue length lets the player tell a pre-roll ad from the song.
+  await audio({ cmd: 'load', embed: id, token, volume: state.volume, startAt, expect: toSeconds(t.duration), meta: { title: t.title, artist: t.artists, album: t.album, artwork: t.thumbnail } });
   armStartTimer(t, token, 15000);
   return true;
 }
@@ -314,6 +342,8 @@ async function startDirect(t: Track, token: number, startAt = 0): Promise<void> 
     return;
   }
   if (r.userAgent) await setNativeUserAgent(r.userAgent);
+  if (token !== loadToken) return; // a newer song started while we waited
+  onEmbed = false;
   state.engine = 'direct';
   lastStream = r.url;
   state.stream = describe(r);
@@ -324,10 +354,14 @@ async function startDirect(t: Track, token: number, startAt = 0): Promise<void> 
   persist(); broadcast();
 }
 
+let startedToken = -1;
+let pauseIntent = -1; // the user paused this load before it started: don't override that
 function armStartTimer(t: Track, token: number, ms = START_TIMEOUT_MS) {
   if (startTimer) clearTimeout(startTimer);
   startTimer = setTimeout(() => {
-    if (token === loadToken && !state.playing && state.position < 0.5) {
+    // "never started" = no playing event for this load (a resume at 1:30
+    // reports position 90 before it plays, so position can't tell).
+    if (token === loadToken && startedToken !== token && !state.playing && pauseIntent !== token) {
       console.warn('[BitChord] stream never started, trying next source');
       log('watchdog: stream never started');
       resolved.delete(t.videoId);
@@ -451,6 +485,7 @@ function maybeScrobble() {
 
 // ---------- sleep timer ----------
 let sleepTimer: ReturnType<typeof setTimeout> | null = null;
+let sleepFadeUntil = 0;
 function setSleep(minutes: number) {
   if (sleepTimer) { clearTimeout(sleepTimer); sleepTimer = null; }
   state.sleepAt = minutes > 0 ? Date.now() + minutes * 60_000 : null;
@@ -462,6 +497,7 @@ function checkSleep() {
   if (!state.sleepAt || Date.now() < state.sleepAt) return;
   log('sleep timer: pausing');
   setSleep(0);
+  sleepFadeUntil = Date.now() + 7000; // a song ending mid-fade must not start the next one
   // Fade out over a few seconds instead of cutting off mid-word.
   audio({ cmd: 'fade-pause', ms: 6000 });
   broadcast();
@@ -475,7 +511,7 @@ function onTick() {
   if (state.position > 8) prefetchNext();
   const x = cfg.crossfade;
   const left = state.duration - state.position;
-  if (x > 0 && state.duration > 30 && xfadeToken !== loadToken && state.repeat !== 'one' && !state.sleepEndOfTrack
+  if (x > 0 && !onEmbed && Date.now() > sleepFadeUntil && state.duration > 30 && xfadeToken !== loadToken && state.repeat !== 'one' && !state.sleepEndOfTrack
     && state.index + 1 < state.queue.length && left > 0 && left <= x + 0.3) {
     xfadeToken = loadToken;
     advance(1, true, Math.min(x, left));
@@ -483,6 +519,7 @@ function onTick() {
 }
 
 // ---------- events from offscreen audio ----------
+let posSavedAt = 0;
 function onAudioEvent(m: any) {
   if (m.kind !== 'time') log('audio', m.kind, m.token, loadToken, m.message ?? '');
   if (m.token !== loadToken || state.engine !== 'direct') return;
@@ -490,11 +527,15 @@ function onAudioEvent(m: any) {
   if (m.kind === 'media-prev') return void previous();
   state.position = m.position;
   if (m.duration) state.duration = m.duration;
+  if (Date.now() - posSavedAt > 3000) { posSavedAt = Date.now(); chrome.storage.session.set({ position: state.position, duration: state.duration, loadToken }); }
   state.playing = m.playing;
-  if (m.kind === 'playing' && startTimer) { clearTimeout(startTimer); startTimer = null; }
+  if (m.kind === 'playing') { startedToken = m.token; if (startTimer) { clearTimeout(startTimer); startTimer = null; } }
   maybeScrobble();
   onTick();
-  if (m.kind === 'ended') return void advance(1, true);
+  if (m.kind === 'ended') {
+    if (Date.now() < sleepFadeUntil) { state.playing = false; broadcast(); return; } // the sleep timer stopped here
+    return void advance(1, true);
+  }
   if (m.kind === 'error') {
     console.warn('[BitChord] audio error', m.message);
     if (/user didn't interact|play\(\) failed because/i.test(m.message)) { state.error = 'Press play to start'; broadcast(); return; }
@@ -505,6 +546,7 @@ function onAudioEvent(m: any) {
     if (t && at > 2 && lastStream && resumeTried !== t.videoId) {
       resumeTried = t.videoId;
       log('resume same stream at', at.toFixed(1));
+      startedToken = -1; armStartTimer(t, loadToken);
       audio({ cmd: 'load', url: lastStream, token: loadToken, volume: state.volume, startAt: at, meta: { title: t.title, artist: t.artists, album: t.album, artwork: t.thumbnail } });
       return;
     }
@@ -523,6 +565,7 @@ function onAudioEvent(m: any) {
 }
 
 const EXT_ORIGIN = chrome.runtime.getURL('');
+const OFFSCREEN_URL = chrome.runtime.getURL('offscreen.html');
 /** Extension pages (side panel, full-tab view, offscreen) — never a website's content script. */
 const fromExtensionPage = (s: chrome.runtime.MessageSender) => s.id === chrome.runtime.id && !!s.url?.startsWith(EXT_ORIGIN);
 
@@ -543,9 +586,24 @@ function validCommand(cmd: UiCommand): boolean {
   }
 }
 
+/** Start the current song again where it was (after an error, a restart, or Chrome closing an idle player). */
+async function resumeTrack() {
+  const t = state.track;
+  if (!t) return;
+  const at = state.position > 2 && (!state.duration || state.position < state.duration - 2) ? state.position : 0;
+  const token = ++loadToken;
+  triedSources = new Set(); failReasons = []; embedTried = new Set(); resumeTried = '';
+  Object.assign(state, { resolving: true, error: null });
+  log('resume', t.title, 'at', at.toFixed(1));
+  persist(); broadcast();
+  await startDirect(t, token, at);
+}
 async function togglePlay() {
-  if (!state.engine && state.track) await playCurrent();
-  else { state.error = null; await live.toggle(); }
+  state.error = null;
+  // Chrome closes an audio page after ~30 s of silence: a paused song has to be reloaded.
+  if (state.track && (!state.engine || !(await offscreenAlive()))) { await resumeTrack(); return; }
+  if (startedToken !== loadToken) pauseIntent = pauseIntent === loadToken ? -1 : loadToken;
+  await live.toggle();
 }
 async function previous() {
   if (state.position > 3) { await live.seek(0); state.position = 0; } else await advance(-1);
@@ -556,10 +614,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id) return;
   (async () => {
     await restored;
-    if (msg?.type === 'audio-event') return fromExtensionPage(sender) ? onAudioEvent(msg) : undefined;
+    // Audio events come only from the offscreen player page.
+    if (msg?.type === 'audio-event') {
+      if (sender.id === chrome.runtime.id && sender.url?.startsWith(OFFSCREEN_URL)) onAudioEvent(msg);
+      sendResponse({ ok: true }); // close the channel: callers never hang on it
+      return;
+    }
     const cmd = msg as UiCommand;
     // Player commands only come from BitChord's own pages, and must be well-formed.
-    if (!fromExtensionPage(sender) || !cmd?.type) return;
+    if (!fromExtensionPage(sender) || !cmd?.type) { sendResponse(null); return; }
     if (!validCommand(cmd)) { log('bad command', cmd.type); sendResponse(state); return; }
     switch (cmd.type) {
       case 'get-state': sendResponse(state); return;

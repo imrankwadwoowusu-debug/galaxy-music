@@ -75,11 +75,13 @@ export interface Candidate { title: string; artist?: string; durationSec?: numbe
 export function mismatch(q: { title: string; artist: string; duration?: number }, c: Candidate): string {
   const a = titleParts(q.title).words, b = titleParts(c.title).words;
   if (!b) return 'no title';
-  let titleOk = a === b || (a.length >= 4 && b.length >= 4 && (a.includes(b) || b.includes(a)));
+  // Whole words, never substrings: "Hero" is not "Superhero", "Love" is not
+  // "Love Me Like You Do". Extra words are fine while two-thirds of them agree.
+  let titleOk = a === b || a.replace(/ /g, '') === b.replace(/ /g, '');
   if (!titleOk) {
     const A = words(q.title), B = words(c.title);
     const shared = [...A].filter((w) => B.has(w)).length;
-    titleOk = shared / Math.max(A.size, B.size, 1) >= 0.67;
+    titleOk = shared >= 1 && shared / Math.max(A.size, B.size, 1) >= 0.67;
   }
   if (!titleOk) return `title "${c.title}"`;
   // A Telugu and a Tamil version of a film song share a title but not lyrics.
@@ -198,9 +200,10 @@ async function lrclib(q: Query): Promise<Lyrics | null> {
     d = ok.find((x) => x.syncedLyrics) ?? ok.find((x) => x.plainLyrics) ?? null;
   }
   if (!d || d.instrumental) return null;
-  const synced = d.syncedLyrics ? parseLrc(d.syncedLyrics) : null;
-  if (!fitsLength(synced, q.duration)) { reject('lrclib', 'runs past the song'); return null; }
-  return { synced, plain: d.plainLyrics ?? null };
+  let synced = d.syncedLyrics ? parseLrc(d.syncedLyrics) : null;
+  // timings for another cut of the song: keep the words, drop the timings
+  if (!fitsLength(synced, q.duration)) { reject('lrclib', 'timings run past the song'); synced = null; }
+  return synced?.length || d.plainLyrics ? { synced, plain: d.plainLyrics ?? null } : null;
 }
 
 let mxmToken: string | null = null;
@@ -296,6 +299,7 @@ export async function getLyrics(title: string, artist: string, duration?: number
     } else if (r.plain) plainHit ??= tagged;
   }
   const result = lineHit ?? plainHit ?? { synced: null, plain: null };
-  cache.set(key, result);
+  // A miss may be a network hiccup: only answers are cached, so a later look tries again.
+  if (result.synced || result.plain) cache.set(key, result);
   return result;
 }
