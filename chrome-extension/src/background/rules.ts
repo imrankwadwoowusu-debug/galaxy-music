@@ -12,15 +12,6 @@ export async function installStaticRules() {
     removeRuleIds: [1, 4, 10, 11, 14, 16],
     addRules: [
       {
-        // Equalizer: Web Audio needs CORS-readable media. Streams fetched by
-        // the extension's own <audio> get an Access-Control-Allow-Origin.
-        id: 16, priority: 1,
-        action: { type: R.RuleActionType.MODIFY_HEADERS, responseHeaders: [
-          { header: 'Access-Control-Allow-Origin', operation: SET, value: '*' },
-        ] },
-        condition: { regexFilter: '^https://([a-z0-9-]+\\.)*(googlevideo\\.com|saavncdn\\.com)/', initiatorDomains: ext(), resourceTypes: [R.ResourceType.MEDIA, ...XHR_TYPES] },
-      },
-      {
         // Apple Music library API only answers music.apple.com
         id: 14, priority: 1,
         action: { type: R.RuleActionType.MODIFY_HEADERS, requestHeaders: [

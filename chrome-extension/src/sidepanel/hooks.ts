@@ -29,8 +29,10 @@ export const send = (cmd: UiCommand) => chrome.runtime.sendMessage(cmd).catch(()
 export function usePlayer(): PlayerState | null {
   const [s, setS] = useState<PlayerState | null>(null);
   useEffect(() => {
-    send({ type: 'get-state' }).then((r) => r && setS(r));
-    const fn = (msg: any) => { if (msg?.type === 'state') setS(msg.state); };
+    let pushed = false; // a broadcast that beats the get-state reply is newer
+    send({ type: 'get-state' }).then((r) => { if (r && !pushed) setS(r); });
+    // Only the service worker broadcasts state (a content script's message has sender.tab).
+    const fn = (msg: any, sender: chrome.runtime.MessageSender) => { if (msg?.type === 'state' && !sender.tab && sender.id === chrome.runtime.id) { pushed = true; setS(msg.state); } };
     chrome.runtime.onMessage.addListener(fn);
     return () => chrome.runtime.onMessage.removeListener(fn);
   }, []);
@@ -67,7 +69,11 @@ export function useLivePosition(s: PlayerState | null, fps = 60): number {
 
 export function useArtColor(url?: string): string {
   const [c, setC] = useState('#23232c');
-  useEffect(() => { if (url) artworkColor(url).then(setC); }, [url]);
+  useEffect(() => {
+    let alive = true;
+    if (url) artworkColor(url).then((c) => alive && setC(c)).catch(() => {});
+    return () => { alive = false; };
+  }, [url]);
   return c;
 }
 
@@ -97,16 +103,19 @@ export const fmt = (s: number) => {
 export function useCached<T>(key: string | null, fetcher: () => Promise<T>, ttlMs = 10 * 60 * 1000) {
   const [st, setSt] = useState<{ data: T | null; error: string | null; loading: boolean; refreshing: boolean }>({ data: null, error: null, loading: true, refreshing: false });
   const [nonce, setNonce] = useState(0);
-  const retry = useCallback(() => setNonce((n) => n + 1), []);
+  const forced = useRef(false); // only the run a retry() started skips a fresh cache
+  const retry = useCallback(() => { forced.current = true; setNonce((n) => n + 1); }, []);
   useEffect(() => {
-    if (!key) return;
+    // No key: drop the old key's data rather than showing it under the new context.
+    if (!key) { setSt((p) => (p.data === null && !p.error ? p : { data: null, error: null, loading: true, refreshing: false })); return; }
     let alive = true;
+    const force = forced.current; forced.current = false;
     setSt({ data: null, error: null, loading: true, refreshing: false });
     (async () => {
-      const hit = await readCache<T>(key);
+      const hit = await readCache<T>(key).catch(() => null);
       if (!alive) return;
-      if (hit) setSt({ data: hit.data, error: null, loading: false, refreshing: !isFresh(hit, ttlMs) || nonce > 0 });
-      if (hit && isFresh(hit, ttlMs) && nonce === 0) return;
+      if (hit) setSt({ data: hit.data, error: null, loading: false, refreshing: !isFresh(hit, ttlMs) || force });
+      if (hit && isFresh(hit, ttlMs) && !force) return;
       try {
         const data = await refresh(key, fetcher);
         if (alive) setSt({ data, error: null, loading: false, refreshing: false });

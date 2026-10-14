@@ -40,7 +40,7 @@ export function SearchBar({ value, onSearch, onOpen, onArtist, busy, autoFocus }
   useEffect(() => {
     setSel(-1);
     const term = q.trim();
-    if (term.length < 1) { setSugg([]); return; }
+    if (term.length < 1) { setSugg([]); setLoading(false); return; }
     setLoading(true);
     let alive = true;
     const id = setTimeout(() => {

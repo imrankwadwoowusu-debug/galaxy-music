@@ -538,7 +538,7 @@ function onAudioEvent(m: any) {
   if (m.kind !== 'time') log('audio', m.kind, m.token, loadToken, m.message ?? '');
   if (m.token !== loadToken || state.engine !== 'direct') return;
   if (m.kind === 'media-next') return void advance(1);
-  if (m.kind === 'media-prev') return void advance(-1);
+  if (m.kind === 'media-prev') return void previous();
   state.position = m.position;
   if (m.duration) state.duration = m.duration;
   state.playing = m.playing;
@@ -593,11 +593,41 @@ function onPageState(s: PageState | null) {
   broadcast();
 }
 
+const EXT_ORIGIN = chrome.runtime.getURL('');
+/** Extension pages (side panel, full-tab view, offscreen) — never a website's content script. */
+const fromExtensionPage = (s: chrome.runtime.MessageSender) => s.id === chrome.runtime.id && !!s.url?.startsWith(EXT_ORIGIN);
+
+function validCommand(cmd: UiCommand): boolean {
+  const n = state.queue.length;
+  const idx = (i: unknown, max = n) => Number.isInteger(i) && (i as number) >= 0 && (i as number) < max;
+  const isTrack = (t: any) => t && typeof t.videoId === 'string' && typeof t.title === 'string' && typeof t.artists === 'string';
+  switch (cmd.type) {
+    case 'play-queue': return Array.isArray(cmd.tracks) && cmd.tracks.length > 0 && cmd.tracks.every(isTrack) && idx(cmd.index, cmd.tracks.length);
+    case 'play-index': case 'remove-index': case 'play-next-index': return idx(cmd.index);
+    case 'move': return idx(cmd.from) && idx(cmd.to);
+    case 'add-next': case 'add-queue': return isTrack(cmd.track);
+    case 'append': return Array.isArray(cmd.tracks) && cmd.tracks.every(isTrack);
+    case 'seek': return Number.isFinite(cmd.seconds) && cmd.seconds >= 0;
+    case 'volume': return Number.isFinite(cmd.value) && cmd.value >= 0 && cmd.value <= 100;
+    case 'sleep': return Number.isFinite(cmd.minutes) && cmd.minutes >= -1 && cmd.minutes <= 24 * 60;
+    default: return true;
+  }
+}
+
+async function togglePlay() {
+  if (!state.engine && state.track) await playCurrent();
+  else { state.error = null; await live.toggle(); }
+}
+async function previous() {
+  if (state.position > 3) { await live.seek(0); state.position = 0; } else await advance(-1);
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.target === 'offscreen' || msg?.type === 'state') return; // not for us
+  if (sender.id !== chrome.runtime.id) return;
   (async () => {
     await restored;
-    if (msg?.type === 'audio-event') return onAudioEvent(msg);
+    if (msg?.type === 'audio-event') return fromExtensionPage(sender) ? onAudioEvent(msg) : undefined;
     if (msg?.type === 'helper-hello') {
       if (sender.tab?.id === helperTabId) {
         state.helperReady = true;
@@ -620,11 +650,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       if (msg.kind === 'ended' && state.engine === 'tab') { expectedVideoId = null; await advance(1, true); return; }
       if (msg.kind === 'state' || msg.kind === 'ready') onPageState(msg.payload);
-      if (msg.kind === 'media-key' && state.engine === 'tab') advance(msg.payload === 'next' ? 1 : -1);
+      if (msg.kind === 'media-key' && state.engine === 'tab') { if (msg.payload === 'next') advance(1); else previous(); }
       return;
     }
     const cmd = msg as UiCommand;
-    switch (cmd?.type) {
+    // Player commands only come from BitChord's own pages, and must be well-formed.
+    if (!fromExtensionPage(sender) || !cmd?.type) return;
+    if (!validCommand(cmd)) { log('bad command', cmd.type); sendResponse(state); return; }
+    switch (cmd.type) {
       case 'get-state': sendResponse(state); return;
       case 'play-queue':
         state.queue = cmd.tracks; state.index = cmd.index;
@@ -648,14 +681,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (cmd.index !== state.index) moveItem(cmd.index, cmd.index < state.index ? state.index : state.index + 1);
         break;
       case 'clear-upnext': state.queue = state.queue.slice(0, state.index + 1); break;
-      case 'toggle':
-        if (!state.engine && state.track) await playCurrent();
-        else { state.error = null; await live.toggle(); }
-        break;
+      case 'toggle': await togglePlay(); break;
       case 'next': await advance(1); break;
-      case 'prev':
-        if (state.position > 3) await live.seek(0); else await advance(-1);
-        break;
+      case 'prev': await previous(); break;
       case 'seek': await live.seek(cmd.seconds); state.position = cmd.seconds; break;
       case 'volume': await live.volume(cmd.value); state.volume = cmd.value; break;
       case 'shuffle': state.shuffle = !state.shuffle; if (state.shuffle) shuffleRest(); break;
@@ -694,9 +722,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 chrome.commands.onCommand.addListener(async (command) => {
   await restored;
-  if (command === 'toggle-play') live.toggle();
-  if (command === 'next-track') advance(1);
-  if (command === 'prev-track') advance(-1);
+  if (command === 'toggle-play') await togglePlay();
+  if (command === 'next-track') await advance(1);
+  if (command === 'prev-track') await previous();
+  persist(); broadcast();
 });
 
 async function setup() {

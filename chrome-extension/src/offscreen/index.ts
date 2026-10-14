@@ -157,18 +157,20 @@ async function load(msg: LoadMsg, plain = false) {
   s.el.play().catch((e) => { if (!s.el.error && e?.name === 'NotAllowedError') emit(s, 'error', { message: String(e?.message ?? e) }); });
 }
 
-chrome.runtime.onMessage.addListener((msg, _s, reply) => {
-  if (msg?.target !== 'offscreen') return;
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  if (msg?.target !== 'offscreen' || sender.id !== chrome.runtime.id || sender.tab) return; // only the service worker drives audio
   const a = active?.el;
   switch (msg.cmd) {
-    case 'load': void load(msg); break;
+    // v0.8: no equalizer, so songs play as plain elements: no Web Audio graph,
+    // no CORS-mode fetch, less CPU. (The graph code stays for a future EQ.)
+    case 'load': void load(msg, true); break;
     case 'play': a?.play().catch(() => {}); break;
     case 'pause': a?.pause(); break;
     case 'fade-pause': if (active) { const s = active; fade(s, 0, (msg.ms ?? 4000)).then(() => { s.el.pause(); setVol(s, target); }); } break;
     case 'toggle': if (a) { if (a.paused) { if (active!.vol < 0.05) setVol(active!, target); a.play().catch(() => {}); } else a.pause(); } break;
     case 'seek': if (a) a.currentTime = msg.seconds; break;
     case 'volume': target = msg.value / 100; if (active && !active.ramp) setVol(active, target); break;
-    case 'eq': eqOn = !!msg.on; if (Array.isArray(msg.gains)) eqGains = msg.gains; if (eqOn) graph(); applyEq(); break;
+    case 'eq': eqOn = !!msg.on; if (Array.isArray(msg.gains)) eqGains = msg.gains; if (eqOn) graph(); applyEq(); break; // background always sends on:false
     case 'stop': {
       const s = active;
       active = null;

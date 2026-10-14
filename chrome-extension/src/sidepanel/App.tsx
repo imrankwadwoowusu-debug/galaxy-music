@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Card, MoodChip } from '../lib/types';
 import { getAccountInfo } from '../lib/innertube';
 import { send, useArtColor, useCached, usePlayer, useSession, useSettings } from './hooks';
@@ -38,20 +38,30 @@ export default function App() {
 
   const top = () => main.current?.scrollTo({ top: 0 });
   const go = (t: Tab) => { setTab(t); setOverlay(null); setStack([]); if (t !== 'search') setQuery(null); top(); };
-  const onSearch = (q: string) => { setTab('search'); setQuery(q); setOverlay(null); setStack([]); top(); };
   // Overlays stack like Android's back stack: artist -> album -> back to artist.
   const [stack, setStack] = useState<Overlay[]>([]);
-  const push = (o: Overlay) => { setStack((st) => (overlay ? [...st, overlay].slice(-10) : st)); setOverlay(o); top(); };
+  // Stable callbacks (they read the overlay from a ref), so the memoised rows and
+  // cards don't re-render on every player tick.
+  const overlayRef = useRef<Overlay>(null);
+  overlayRef.current = overlay;
+  const push = useCallback((o: Overlay) => {
+    const cur = overlayRef.current;
+    setStack((st) => (cur ? [...st, cur].slice(-10) : st)); setOverlay(o); main.current?.scrollTo({ top: 0 });
+  }, []);
   const back = () => { setOverlay(stack[stack.length - 1] ?? null); setStack((st) => st.slice(0, -1)); top(); };
-  const onArtist = (name: string, id?: string) => { if (name || id) push({ kind: 'artist', name, id }); };
-  const onMood = (chip: MoodChip) => push({ kind: 'mood', chip });
-  const onOpen = (card: Card) => push({ kind: 'coll', card });
-  const ctx = { activeId: player?.videoId ?? null, onArtist, onOpen };
+  const onArtist = useCallback((name: string, id?: string) => { if (name || id) push({ kind: 'artist', name, id }); }, [push]);
+  const onMood = useCallback((chip: MoodChip) => push({ kind: 'mood', chip }), [push]);
+  const onOpen = useCallback((card: Card) => push({ kind: 'coll', card }), [push]);
+  const activeId = player?.videoId ?? null;
+  const ctx = useMemo(() => ({ activeId, onArtist, onOpen }), [activeId, onArtist, onOpen]);
 
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
-      const typing = ['INPUT', 'TEXTAREA'].includes((document.activeElement as HTMLElement)?.tagName);
-      if (e.code === 'Space' && !typing && (document.activeElement as HTMLElement)?.tagName !== 'BUTTON') { e.preventDefault(); send({ type: 'toggle' }); }
+      const el = document.activeElement as HTMLElement | null;
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName ?? '') || !!el?.isContentEditable;
+      // Space is play/pause only when focus is not on something Space already activates.
+      const interactive = !!el?.closest('input,textarea,select,button,a,[role=button],[role=radio],[role=switch],[role=checkbox],[role=option],[role=menuitem],[contenteditable=true]');
+      if (e.code === 'Space' && !typing && !interactive && !e.repeat) { e.preventDefault(); send({ type: 'toggle' }); }
       if (!typing && ((e.key === '/') || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) && tab !== 'search') { e.preventDefault(); go('search'); }
     };
     window.addEventListener('keydown', fn);
@@ -82,7 +92,7 @@ export default function App() {
         <main className="main" ref={main}>
           <header className="appbar">
             <button className="arcs-btn" onClick={() => go('listen')} aria-label="BitChord, Listen Now"><Arcs size={34} /></button>
-            <div className="appbar-title">{overlay ? '' : ''}</div>
+            <div className="appbar-title" />
             <div className="appbar-actions">
               {!isTab && <button className="round-btn" title="Open in a full tab" onClick={() => send({ type: 'open-tab' })}><Icon name="external" size={18} /></button>}
               <button className="round-btn avatar" title="Settings" onClick={() => setSettingsOpen(true)}>

@@ -5,11 +5,11 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { DirectSource, Settings } from '../../lib/types';
 import { DEFAULT_SETTINGS } from '../../lib/types';
 import { getSettings, setSettings } from '../../lib/settings';
+import { CACHE_PREFIX, clearAllCache } from '../../lib/cache';
 import { AUTH_COOKIE_NAMES, appleMusicSignedIn, googleAccounts, openSignIn, youtubeMusicStatus, type GoogleAccount } from '../../lib/accounts';
 import type { AccountInfo } from '../../lib/innertube';
 import { DEFAULT_LYRICS_ORDER, getLyricsPrefs, LYRICS_SOURCES, setLyricsPrefs, type LyricsPrefs, type LyricsSourceId } from '../../lib/lyrics';
 import { TransferPage } from './Transfer';
-import { useSettings } from '../hooks';
 import { lastfmFinishAuth, lastfmStartAuth } from '../../lib/lastfm';
 import { DISCOVER_LANGUAGES } from '../../lib/discover';
 import { Icon } from './Icon';
@@ -39,12 +39,20 @@ export function Group({ label, children, foot }: { label?: string; children: Rea
     </section>
   );
 }
+/** Enter/Space on a focused row-like element activates it (and never reaches the global Space = play/pause). */
+export const keyActivate = (fn: () => void) => (e: React.KeyboardEvent) => {
+  if (e.target !== e.currentTarget) return;
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); fn(); }
+};
+
 export function Row({ icon, title, sub, value, onClick, toggle, badge, children, disabled }: {
   icon?: string | ReactNode; title: string; sub?: string; value?: string; onClick?: () => void; toggle?: { on: boolean; set: (v: boolean) => void }; badge?: string; children?: ReactNode; disabled?: boolean;
 }) {
   const click = toggle ? () => toggle.set(!toggle.on) : onClick;
+  const live = click && !disabled ? click : undefined;
   return (
-    <div className={`s-row ${click ? 'tap' : ''} ${disabled ? 'disabled' : ''}`} onClick={disabled ? undefined : click} role={click ? 'button' : undefined} tabIndex={click ? 0 : undefined}>
+    <div className={`s-row ${click ? 'tap' : ''} ${disabled ? 'disabled' : ''}`} onClick={live} onKeyDown={live ? keyActivate(live) : undefined}
+      role={click ? (toggle ? 'switch' : 'button') : undefined} aria-checked={toggle ? toggle.on : undefined} aria-disabled={disabled || undefined} tabIndex={live ? 0 : undefined}>
       <div className="s-row-main">
         {icon !== undefined && <span className="s-icon">{typeof icon === 'string' ? <Icon name={icon} size={22} /> : icon}</span>}
         <span className="s-text">
@@ -92,10 +100,17 @@ const AppleLogo = () => (
 );
 
 // ---------- hooks ----------
+/** Live settings with optimistic saves: the UI moves at once, and changes made elsewhere show up here. */
 function useStoreSettings() {
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS);
-  useEffect(() => { getSettings().then(setS); }, []);
-  const save = useCallback(async (patch: Partial<Settings>) => setS(await setSettings(patch)), []);
+  useEffect(() => {
+    let alive = true;
+    getSettings().then((x) => alive && setS(x));
+    const fn = (c: Record<string, chrome.storage.StorageChange>) => { if (c.settings) getSettings().then((x) => alive && setS(x)); };
+    chrome.storage.onChanged.addListener(fn);
+    return () => { alive = false; chrome.storage.onChanged.removeListener(fn); };
+  }, []);
+  const save = useCallback(async (patch: Partial<Settings>) => { setS((p) => ({ ...p, ...patch })); await setSettings(patch); }, []);
   return [s, save] as const;
 }
 
@@ -141,14 +156,19 @@ function AccountsPage({ onBack }: { onBack: () => void }) {
     let t: ReturnType<typeof setTimeout> | null = null;
     const onCookie = (c: chrome.cookies.CookieChangeInfo) => { if (AUTH_COOKIE_NAMES.has(c.cookie.name)) { if (t) clearTimeout(t); t = setTimeout(load, 800); } };
     chrome.cookies.onChanged.addListener(onCookie);
-    return () => { document.removeEventListener('visibilitychange', fn); window.removeEventListener('focus', fn); };
+    return () => {
+      document.removeEventListener('visibilitychange', fn); window.removeEventListener('focus', fn);
+      chrome.cookies.onChanged.removeListener(onCookie);
+      if (t) clearTimeout(t);
+    };
   }, [load]);
   const info = ytm && typeof ytm === 'object' ? ytm : null;
   const signed = ytm !== null && ytm !== 'signed-out';
 
   return (
     <Page title="Account & integrations" onBack={onBack}>
-      <div className="acct-hero" onClick={() => !signed && openSignIn('youtube-music')} role="button" tabIndex={0}>
+      <div className="acct-hero" onClick={() => !signed && openSignIn('youtube-music')} role={signed ? undefined : 'button'} tabIndex={signed ? undefined : 0}
+        onKeyDown={signed ? undefined : keyActivate(() => openSignIn('youtube-music'))}>
         <span className="acct-hero-avatar">{info?.photo ? <img src={info.photo} alt="" referrerPolicy="no-referrer" /> : <Icon name="person" size={28} />}</span>
         <span className="s-text">
           <span className="acct-hero-name">{ytm === null ? '…' : info ? info.name : signed ? 'Signed in' : 'Not signed in'}</span>
@@ -162,7 +182,8 @@ function AccountsPage({ onBack }: { onBack: () => void }) {
         {signed && <Row title="Personalise with this account" sub="Your Quick picks, mixes and recommendations" toggle={{ on: s.useAccount, set: (v) => save({ useAccount: v }) }} />}
         <Row icon={<GoogleLogo />} title="Google" sub={google === null ? 'Checking…' : google.length ? `${google.length} account${google.length > 1 ? 's' : ''} in Chrome` : 'Not signed in'} value={google?.length ? 'Add' : 'Sign in'} onClick={() => openSignIn('google')} />
         {google && google.length > 0 && google.map((g) => (
-          <div key={g.index + g.email} className={`s-row tap sub-row ${s.authUser === g.index ? 'sel' : ''}`} onClick={() => save({ authUser: g.index })} role="radio" aria-checked={s.authUser === g.index}>
+          <div key={g.index + g.email} className={`s-row tap sub-row ${s.authUser === g.index ? 'sel' : ''}`} onClick={() => save({ authUser: g.index })} role="radio" aria-checked={s.authUser === g.index}
+            tabIndex={0} onKeyDown={keyActivate(() => save({ authUser: g.index }))}>
             <div className="s-row-main">
               <span className="s-icon">{g.photo ? <img className="mini-avatar" src={g.photo} alt="" referrerPolicy="no-referrer" /> : <Icon name="person" size={20} />}</span>
               <span className="s-text"><span className="s-title">{g.name || 'Google account'}</span><span className="s-sub">{g.email}</span></span>
@@ -227,7 +248,9 @@ function SourcesPage({ onBack }: { onBack: () => void }) {
     <Page title="Sources" onBack={onBack}>
       <Group label="Sources, tried in this order" foot="If a source does not have a track or cannot be reached, BitChord tries the next one. Sources above YouTube can replace its recording when they return a better version.">
         {s.sources.map((id, i) => (
-          <div key={id} className={`s-row src-row ${drag === i ? 'dragging' : ''}`} draggable onDragStart={() => setDrag(i)} onDragOver={(e) => { e.preventDefault(); if (drag !== null && drag !== i) { move(drag, i); setDrag(i); } }} onDragEnd={() => setDrag(null)}>
+          <div key={id} className={`s-row src-row ${drag === i ? 'dragging' : ''}`} draggable onDragStart={() => setDrag(i)} onDragOver={(e) => { e.preventDefault(); if (drag !== null && drag !== i) { move(drag, i); setDrag(i); } }} onDragEnd={() => setDrag(null)}
+            tabIndex={0} aria-label={`${info[id].title}, position ${i + 1}. Alt plus arrow keys to reorder.`}
+            onKeyDown={(e) => { if (e.target === e.currentTarget && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); const j = i + (e.key === 'ArrowUp' ? -1 : 1); if (j >= 0 && j < s.sources.length) move(i, j); } }}>
             <div className="s-row-main">
               <span className="src-num">{i + 1}</span>
               <span className="s-icon"><Icon name={info[id].icon} size={22} /></span>
@@ -265,6 +288,10 @@ function LyricsSourcesSheet({ onClose }: { onClose: () => void }) {
   const [p, setP] = useState<LyricsPrefs | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
   useEffect(() => { getLyricsPrefs().then(setP); }, []);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
   const update = (next: LyricsPrefs) => { setP(next); setLyricsPrefs(next); };
   if (!p) return null;
   const move = (from: number, to: number) => {
@@ -285,7 +312,12 @@ function LyricsSourcesSheet({ onClose }: { onClose: () => void }) {
             const on = p.enabled.includes(id);
             return (
               <div key={id} className={`ly-src ${drag === i ? 'dragging' : ''} ${on ? '' : 'off'}`} draggable onDragStart={() => setDrag(i)}
-                onDragOver={(e) => { e.preventDefault(); if (drag !== null && drag !== i) { move(drag, i); setDrag(i); } }} onDragEnd={() => setDrag(null)} onClick={() => toggle(id)}>
+                onDragOver={(e) => { e.preventDefault(); if (drag !== null && drag !== i) { move(drag, i); setDrag(i); } }} onDragEnd={() => setDrag(null)} onClick={() => toggle(id)}
+                role="checkbox" aria-checked={on} tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); const j = i + (e.key === 'ArrowUp' ? -1 : 1); if (j >= 0 && j < p.order.length) move(i, j); return; }
+                  keyActivate(() => toggle(id))(e);
+                }}>
                 <span className="drag-handle"><Icon name="drag" size={18} /></span>
                 <span className="s-text"><span className="s-title">{meta.label}</span><span className="s-sub">{meta.hint}</span></span>
                 <span className="ly-check">{on && <Icon name="check" size={20} />}</span>
@@ -315,17 +347,23 @@ export function SettingsPage({ me, onClose, initial }: { me: AccountInfo | null;
   useEffect(() => {
     getLyricsPrefs().then((p) => setLyricsSummary(p.order.filter((x) => p.enabled.includes(x)).map((x) => LYRICS_SOURCES.find((y) => y.id === x)!.label).join(', ') || 'Off'));
   }, [lyricsOpen]);
-  useEffect(() => { const k = (e: KeyboardEvent) => e.key === 'Escape' && (page === 'main' ? onClose() : setPage('main')); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [page, onClose]);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || lyricsOpen) return; // the dialog closes first
+      // Opened straight into Transfer: Escape closes Settings, like Back does.
+      page === 'main' || (page === 'transfer' && initial === 'transfer') ? onClose() : setPage('main');
+    };
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
+  }, [page, onClose, lyricsOpen, initial]);
   const flash = (t: string) => { setToast(t); setTimeout(() => setToast(''), 2200); };
 
   const clearCache = async () => {
-    const all = await chrome.storage.local.get(null);
-    await chrome.storage.local.remove(Object.keys(all).filter((k) => k.startsWith('c:')));
+    await clearAllCache();
     flash('Cache cleared');
   };
   const exportData = async () => {
     const all = await chrome.storage.local.get(null);
-    const data = Object.fromEntries(Object.entries(all).filter(([k]) => !k.startsWith('c:') && k !== 'visitorData'));
+    const data = Object.fromEntries(Object.entries(all).filter(([k]) => !k.startsWith(CACHE_PREFIX) && !k.startsWith('c:') && k !== 'c2-index' && k !== 'visitorData'));
     if (data.settings) Object.assign(data.settings as Settings, { listenbrainzToken: '', lastfmSecret: '', lastfmSession: '' });
     const blob = new Blob([JSON.stringify({ app: 'BitChord for Chrome', exportedAt: new Date().toISOString(), data }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');

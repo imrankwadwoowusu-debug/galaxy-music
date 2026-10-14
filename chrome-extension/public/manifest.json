@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "BitChord",
   "short_name": "BitChord",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "BitChord in Chrome's side panel: YouTube Music with an Apple Music-style player, right next to your work.",
   "icons": {
     "16": "icons/icon16.png",

@@ -33,18 +33,19 @@ export function Controls({ s, size = 'lg' }: { s: PlayerState; size?: 'lg' | 'sm
 }
 
 export function Seek({ s }: { s: PlayerState }) {
-  const pos = useLivePosition(s);
+  const pos = useLivePosition(s, 8);
   const [drag, setDrag] = useState<number | null>(null);
   const dur = s.duration || 0;
   const v = drag ?? pos;
+  const commit = () => { if (drag != null) send({ type: 'seek', seconds: drag }); setDrag(null); };
   return (
     <div className="seek">
       <input
         type="range" min={0} max={dur || 1} step={0.5} value={Math.min(v, dur || 1)}
         style={{ ['--p' as string]: `${dur ? (v / dur) * 100 : 0}%` }}
         onChange={(e) => setDrag(Number(e.target.value))}
-        onMouseUp={() => { if (drag != null) send({ type: 'seek', seconds: drag }); setDrag(null); }}
-        onKeyUp={() => { if (drag != null) send({ type: 'seek', seconds: drag }); setDrag(null); }}
+        // pointer events cover mouse, touch and pen (touch fires no mouseup after a range drag)
+        onPointerUp={commit} onKeyUp={commit} onBlur={commit} onPointerCancel={() => setDrag(null)}
         aria-label="Seek"
       />
       <div className="seek-times"><span>{fmt(v)}</span><span>-{fmt(Math.max(dur - v, 0))}</span></div>
@@ -64,14 +65,23 @@ function Words({ l, pos }: { l: LyricLine; pos: number }) {
   );
 }
 
+function LiveWords({ l, s }: { l: LyricLine; s: PlayerState }) {
+  const pos = useLivePosition(s, 60); // only the sung line ticks at frame rate
+  return <Words l={l} pos={pos} />;
+}
+
 function LyricsPane({ s, settings }: { s: PlayerState; settings: Settings }) {
-  const pos = useLivePosition(s);
+  const pos = useLivePosition(s, 10);
   const [ly, setLy] = useState<Lyrics | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const t = s.track;
   useEffect(() => {
+    let alive = true; // a slow lookup for the previous song must not land on this one
     setLy(null);
-    if (t) getLyrics(t.title, t.artists, s.duration, t.album).then(setLy);
+    if (t) getLyrics(t.title, t.artists, s.duration, t.album)
+      .then((l) => alive && setLy(l))
+      .catch(() => alive && setLy({ synced: null, plain: null }));
+    return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t?.videoId]);
   const lines = settings.syncedLyrics ? ly?.synced : null;
@@ -86,8 +96,9 @@ function LyricsPane({ s, settings }: { s: PlayerState; settings: Settings }) {
     <div className={`lyrics ${settings.blurLyrics ? 'blur' : ''}`} ref={box}>
       {lines
         ? lines.map((l, i) => (
-            <p key={i} className={`ly ${i === cur ? 'cur' : i < cur ? 'past' : ''} ${l.words ? 'wordy' : ''}`} style={{ ['--d' as string]: Math.min(Math.abs(i - cur), 4) }} onClick={() => send({ type: 'seek', seconds: l.time })}>
-              {l.words && i === cur ? <Words l={l} pos={pos} /> : l.text || '♪'}
+            <p key={i} className={`ly ${i === cur ? 'cur' : i < cur ? 'past' : ''} ${l.words ? 'wordy' : ''}`} style={{ ['--d' as string]: Math.min(Math.abs(i - cur), 4) }}
+              role="button" tabIndex={-1} onClick={() => send({ type: 'seek', seconds: l.time })}>
+              {l.words && i === cur ? <LiveWords l={l} s={s} /> : l.text || '♪'}
             </p>
           ))
         : plain!.split('\n').map((l, i) => <p key={i} className="ly plain">{l}</p>)}
@@ -178,7 +189,7 @@ export function NowPlaying({ s, settings, onArtist }: { s: PlayerState; settings
         </span>
         {settings.hideVolume ? <span className="vol" /> : (
           <label className="vol"><Icon name="volume" size={18} />
-            <input type="range" min={0} max={100} value={s.volume} style={{ ['--p' as string]: `${s.volume}%` }} onChange={(e) => send({ type: 'volume', value: Number(e.target.value) })} aria-label="Volume" />
+            <Volume value={s.volume} />
           </label>
         )}
         <span className="np-side">
@@ -203,4 +214,19 @@ export function MiniBar({ s, onExpand }: { s: PlayerState; onExpand: () => void 
       <Controls s={s} size="sm" />
     </div>
   );
+}
+
+/** Volume follows the finger locally and sends at most one update per frame. */
+function Volume({ value }: { value: number }) {
+  const [drag, setDrag] = useState<number | null>(null);
+  const raf = useRef(0);
+  const pending = useRef<number | null>(null);
+  useEffect(() => () => cancelAnimationFrame(raf.current), []);
+  const v = drag ?? value;
+  const change = (n: number) => {
+    setDrag(n); pending.current = n;
+    if (!raf.current) raf.current = requestAnimationFrame(() => { raf.current = 0; if (pending.current != null) send({ type: 'volume', value: pending.current }); });
+  };
+  return <input type="range" min={0} max={100} value={v} style={{ ['--p' as string]: `${v}%` }} onChange={(e) => change(Number(e.target.value))}
+    onPointerUp={() => setTimeout(() => setDrag(null), 150)} onKeyUp={() => setTimeout(() => setDrag(null), 150)} onBlur={() => setDrag(null)} aria-label="Volume" />;
 }

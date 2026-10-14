@@ -165,3 +165,24 @@ Improved:
   - Edit mode adds remove buttons to every song and a Clear button for the whole list.
   - Edits show at once. The background moves songs without interrupting the one playing, and the YouTube Music tab is told about the new next song.
 - Removed the equalizer from the player and from Settings. Audio now always plays flat.
+
+## v0.8.1 (14 Oct 2026): full audit — security, bugs, accessibility, speed
+Security
+- The service worker accepts player commands only from BitChord's own pages, and checks each one (indexes in range, well-formed tracks, sane seek/volume/sleep values). Audio events are accepted only from the offscreen page; the offscreen page takes orders only from the service worker; the panel accepts state only from the service worker.
+- With the equalizer gone, songs play as plain audio elements again, so the rule that added `Access-Control-Allow-Origin: *` to googlevideo/saavncdn responses (DNR 16) is removed.
+- Musixmatch: an all-zero token is treated as a refusal, and its made-up "anti-scraping" lyrics (evenly spaced nonsense lines) are never shown.
+Bugs fixed
+- Double-clicking a song played it 3 times and appended its radio 3 times. A slow radio for an earlier song no longer lands in a new queue; the radio is fetched while the song starts.
+- Lyrics from the previous song could replace the current song's; a failed lookup no longer spins forever.
+- Account page leaked a cookie listener on every visit (repeated account checks).
+- Removing two queue songs quickly removed the wrong one.
+- A new search briefly ran with the old filter chip; clearing the search box left a spinner.
+- Listen Now could show another chip's extra shelves; Retry made later visits skip the cache.
+- Seek bar froze on touch/pen; volume and crossfade sliders lag-free; two quick setting changes no longer drop one.
+- Escape now closes the Lyrics sources dialog first, and cancels a running transfer when it leaves the page.
+- Clear cache now also clears the in-memory copy; cache entries are versioned so an older build's data can't crash a newer one; a crash screen offers "Clear cache and reload" instead of a blank panel.
+- Media keys / Chrome media controls "previous" restarts the song after 3 s, like the button; the keyboard shortcut starts a stopped song.
+Accessibility
+- Settings rows, account switcher, lyrics sources, transfer pickers, queue rows, top result and artist "About" work with Enter/Space; Space no longer toggles music while a control is focused. Sources and lyrics sources reorder with Alt+↑/↓. Cards no longer nest a button inside a button.
+Speed
+- Rows and cards are memoised and the app's callbacks are stable, so player ticks no longer re-render every list. Long playlists render 100 songs at a time. Lyrics tick at frame rate only for the line being sung. Cache writes no longer read all of storage. The user's own YouTube Music tabs no longer message BitChord every second.

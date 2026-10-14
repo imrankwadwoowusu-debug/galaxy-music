@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { deleteImported, getImported, type ImportedPlaylist } from '../../lib/transfer/index';
 import type { Card, MoodChip, Shelf, Track } from '../../lib/types';
-import { findArtistId, getArtist, getQueue, getCardTracks, getCollection, getHome, getHomeMore, getLibraryPlaylists, getMoodCategory, getMoods, getNewReleases, search, sized, type SearchChip } from '../../lib/innertube';
+import { findArtistId, getArtist, getQueue, getCardTracks, getCollection, getHome, getHomeMore, getLibraryPlaylists, getMoodCategory, getMoods, search, sized, type SearchChip } from '../../lib/innertube';
 import { readCache, refresh } from '../../lib/cache';
 import { SearchBar } from './SearchBar';
 import { getLiked, getRecent } from '../../lib/history';
 import { send, useCached } from '../hooks';
-import { CardTile, playSongWithRadio, TrackRow } from './Items';
+import { CardTile, playQueue, playSongWithRadio, TrackRow } from './Items';
 import { DiscoverPage } from './Discover';
 import { Icon } from './Icon';
 
@@ -49,7 +49,9 @@ function Scroller({ children, className = 'carousel', title, sub, onMore }: { ch
   const [edge, setEdge] = useState({ l: true, r: false });
   const check = () => {
     const el = ref.current;
-    if (el) setEdge({ l: el.scrollLeft < 4, r: el.scrollLeft + el.clientWidth >= el.scrollWidth - 4 });
+    if (!el) return;
+    const l = el.scrollLeft < 4, r = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+    setEdge((p) => (p.l === l && p.r === r ? p : { l, r }));
   };
   useEffect(() => { check(); }, [children]);
   const by = (d: number) => ref.current?.scrollBy({ left: d * (ref.current.clientWidth * 0.85), behavior: 'smooth' });
@@ -66,12 +68,21 @@ function Scroller({ children, className = 'carousel', title, sub, onMore }: { ch
   );
 }
 
+const PAGE = 100;
 function TrackGrid({ tracks, ctx, limit }: { tracks: Track[]; ctx: Ctx; limit?: number }) {
-  const list = limit ? tracks.slice(0, limit) : tracks;
+  // Long imported playlists render in pages instead of thousands of rows at once.
+  const [shown, setShown] = useState(PAGE);
+  const max = limit ?? shown;
+  const list = tracks.slice(0, max);
   return (
-    <div className="track-grid">
-      {list.map((t, i) => <TrackRow key={t.videoId + i} t={t} list={tracks} i={i} activeId={ctx.activeId} onArtist={ctx.onArtist} />)}
-    </div>
+    <>
+      <div className="track-grid">
+        {list.map((t, i) => <TrackRow key={t.videoId + i} t={t} list={tracks} i={i} activeId={ctx.activeId} onArtist={ctx.onArtist} />)}
+      </div>
+      {!limit && tracks.length > shown && (
+        <button className="pill show-more" onClick={() => setShown((n) => n + PAGE)}>Show {Math.min(PAGE, tracks.length - shown)} more</button>
+      )}
+    </>
   );
 }
 
@@ -114,7 +125,7 @@ function useStoredTracks(get: () => Promise<Track[]>, key: string) {
 // Square tile for Recently Played on Home
 function RecentTile({ t, list, i, active }: { t: Track; list: Track[]; i: number; active: boolean }) {
   return (
-    <button className={`card ${active ? 'playing' : ''}`} onClick={() => send({ type: 'play-queue', tracks: list, index: i })} title={t.title}>
+    <button className={`card ${active ? 'playing' : ''}`} onClick={() => playQueue(list, i)} title={t.title}>
       <div className="card-art">
         <img src={t.thumbnail} alt="" loading="lazy" />
         <span className="card-play"><Icon name={active ? 'eq' : 'play'} /></span>
@@ -191,15 +202,17 @@ function HeroCard({ c, ctx }: { c: Card; ctx: Ctx }) {
   const [busy, setBusy] = useState(false);
   const play = async (e: React.MouseEvent) => {
     e.stopPropagation(); setBusy(true);
-    try { const t = await getCardTracks(c); if (t.length) await send({ type: 'play-queue', tracks: t, index: 0 }); } finally { setBusy(false); }
+    try { const t = await getCardTracks(c); if (t.length) await playQueue(t, 0); } finally { setBusy(false); }
   };
   const open = () => (c.kind === 'artist' ? ctx.onArtist(c.title, c.browseId) : c.kind === 'album' || c.kind === 'playlist' ? ctx.onOpen(c) : play({ stopPropagation() {} } as React.MouseEvent));
   return (
-    <button className="hero-card" onClick={open} title={c.title}>
-      <img src={sized(c.thumbnail, 544)} alt="" loading="lazy" />
-      <span className="hero-play" role="button" aria-label={`Play ${c.title}`} onClick={play}>{busy ? <span className="spinner sm" /> : <Icon name="play" size={16} />}</span>
-      <span className="hero-text"><span className="hero-title">{c.title}</span><span className="hero-sub">{c.subtitle}</span></span>
-    </button>
+    <div className="hero-card" title={c.title}>
+      <button type="button" className="hero-hit" onClick={open} aria-label={c.title}>
+        <img src={sized(c.thumbnail, 544)} alt="" loading="lazy" />
+        <span className="hero-text"><span className="hero-title">{c.title}</span><span className="hero-sub">{c.subtitle}</span></span>
+      </button>
+      <button type="button" className="hero-play" aria-label={`Play ${c.title}`} onClick={(e) => { if (!busy) play(e); }}>{busy ? <span className="spinner sm" /> : <Icon name="play" size={16} />}</button>
+    </div>
   );
 }
 
@@ -305,7 +318,7 @@ export function LibraryPage({ ctx, me, signedIn, session, onSignIn, onTransfer }
         <h2 className="sub-title">{imp.title}</h2>
         <p className="row-sub" style={{ margin: '-6px 0 12px' }}>From {imp.source} · {imp.tracks.length} songs{imp.missed.length ? ` · ${imp.missed.length} not found` : ''}{imp.ytmPlaylistId ? ' · also in YouTube Music' : ''}</p>
         <div className="coll-actions top">
-          <button className="pill white" disabled={!imp.tracks.length} onClick={() => send({ type: 'play-queue', tracks: imp.tracks, index: 0 })}><Icon name="play" size={16} /> Play</button>
+          <button className="pill white" disabled={!imp.tracks.length} onClick={() => playQueue(imp.tracks, 0)}><Icon name="play" size={16} /> Play</button>
           <button className="pill ghost" onClick={async () => { if (confirm(`Remove "${imp.title}" from BitChord?`)) { await deleteImported(imp.id); setView('home'); } }}><Icon name="trash" size={16} /> Remove</button>
         </div>
         <TrackGrid tracks={imp.tracks} ctx={ctx} />
@@ -320,7 +333,7 @@ export function LibraryPage({ ctx, me, signedIn, session, onSignIn, onTransfer }
         <h2 className="sub-title">{view === 'liked' ? 'Liked songs' : 'Recently played'}</h2>
         {!list ? <SkelRows /> : list.length ? (
           <>
-            <div className="coll-actions top"><button className="pill white" onClick={() => send({ type: 'play-queue', tracks: list, index: 0 })}><Icon name="play" size={16} /> Play</button></div>
+            <div className="coll-actions top"><button className="pill white" onClick={() => playQueue(list, 0)}><Icon name="play" size={16} /> Play</button></div>
             <TrackGrid tracks={list} ctx={ctx} />
           </>
         ) : <div className="empty-state"><p>Nothing here yet.</p></div>}
@@ -364,7 +377,7 @@ export function LibraryPage({ ctx, me, signedIn, session, onSignIn, onTransfer }
           <SectionHead title="Your playlists" sub="YouTube Music" />
           <div className="card-grid">{lists.data.map((c, i) => <CardTile key={i} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} />)}</div>
         </section>
-      ) : null)}
+      ) : lists.error ? <Err msg={lists.error} retry={lists.retry} /> : null)}
     </div>
   );
 }
@@ -375,10 +388,10 @@ export function SearchPage({ ctx, query, onSearch, onMood }: { ctx: Ctx; query: 
   return (
     <div>
       <SearchBar value={query} onSearch={onSearch} onOpen={ctx.onOpen} onArtist={ctx.onArtist} autoFocus={!query} />
-      {query ? <SearchView q={query} ctx={ctx} /> : (
+      {query ? <SearchView key={query} q={query} ctx={ctx} /> : (
         <section className="section">
           <h2 className="group-title">Browse categories</h2>
-          {moods.loading ? <SkelTiles n={8} /> : <div className="tiles">{(moods.data?.flatMap((g) => g.chips) ?? []).slice(0, 12).map((c) => <MoodTile key={c.title} c={c} onPick={onMood} />)}</div>}
+          {moods.loading ? <SkelTiles n={8} /> : <div className="tiles">{(moods.data?.flatMap((g) => g.chips) ?? []).slice(0, 12).map((c, i) => <MoodTile key={`${c.browseId}:${c.params ?? ''}:${i}`} c={c} onPick={onMood} />)}</div>}
         </section>
       )}
     </div>
@@ -389,7 +402,6 @@ export function SearchPage({ ctx, query, onSearch, onMood }: { ctx: Ctx; query: 
 export function SearchView({ q, ctx }: { q: string; ctx: Ctx }) {
   const [chip, setChip] = useState<SearchChip | null>(null);
   const [chips, setChips] = useState<SearchChip[]>([]);
-  useEffect(() => { setChip(null); setChips([]); }, [q]);
   const { data, error, loading, retry } = useCached(`search:${q}:${chip?.params ?? ''}`, () => search(q, chip?.params), 30 * 60 * 1000);
   useEffect(() => { if (!chip && data?.chips.length) setChips(data.chips); }, [data, chip]);
 
@@ -448,7 +460,8 @@ function TopResult({ shelf, ctx }: { shelf: Shelf; ctx: Ctx }) {
     <section className="section top-result">
       <SectionHead title="Top result" />
       <div className={`top-wrap ${songs.length ? '' : 'solo'}`}>
-        <div className="top-card" onClick={open} role="button" tabIndex={0}>
+        <div className="top-card" onClick={open} role="button" tabIndex={0}
+          onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(); } }}>
           <img className={card?.kind === 'artist' ? 'round' : ''} src={art} alt="" />
           <div className="top-info">
             <div className="top-title">{card?.title ?? lead?.title}</div>
@@ -456,7 +469,7 @@ function TopResult({ shelf, ctx }: { shelf: Shelf; ctx: Ctx }) {
             <button className="pill sm" onClick={(e) => {
               e.stopPropagation();
               if (lead) playSongWithRadio(lead);
-              else if (songs.length) send({ type: 'play-queue', tracks: songs, index: 0 });
+              else if (songs.length) playQueue(songs, 0);
               else open();
             }}><Icon name="play" size={14} /> Play</button>
           </div>
@@ -485,10 +498,10 @@ export function CollectionView({ card, ctx, onBack }: { card: Card; ctx: Ctx; on
               {data!.artist && <div className="coll-artist link" onClick={() => ctx.onArtist(data!.artist)}>{data!.artist}</div>}
               <div className="coll-meta">{data!.meta}</div>
               <div className="coll-actions">
-                <button className="pill" disabled={!data!.tracks.length} onClick={() => send({ type: 'play-queue', tracks: data!.tracks, index: 0 })}><Icon name="play" size={16} /> Play</button>
+                <button className="pill" disabled={!data!.tracks.length} onClick={() => playQueue(data!.tracks, 0)}><Icon name="play" size={16} /> Play</button>
                 <button className="pill ghost" disabled={!data!.tracks.length} onClick={() => {
                   const t = [...data!.tracks]; for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [t[i], t[j]] = [t[j], t[i]]; }
-                  send({ type: 'play-queue', tracks: t, index: 0 });
+                  playQueue(t, 0);
                 }}><Icon name="shuffle" size={16} /> Shuffle</button>
               </div>
             </div>
@@ -548,7 +561,8 @@ export function ArtistView({ name, id, ctx, onBack }: { name: string; id?: strin
           {data!.description && (
             <section className="section">
               <SectionHead title="About" />
-              <p className={`artist-about ${more ? 'open' : ''}`} onClick={() => setMore(!more)}>{data!.description}</p>
+              <p className={`artist-about ${more ? 'open' : ''}`} role="button" tabIndex={0} aria-expanded={more} onClick={() => setMore(!more)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMore(!more); } }}>{data!.description}</p>
             </section>
           )}
         </>

@@ -1,7 +1,7 @@
 // Settings → Transfer music: bring playlists and liked songs over from
 // Spotify and Apple Music (or any CSV export), matched to YouTube Music.
 import { useEffect, useRef, useState } from 'react';
-import { Group, Page, Row } from './Settings';
+import { Group, keyActivate, Page, Row } from './Settings';
 import { Icon } from './Icon';
 import { NeedsSignIn, SERVICES, openLogin, parseCsv, spotifyLink, type ServiceId, type SourceList, type SourceTrack } from '../../lib/transfer/sources';
 import { runImport, type Progress } from '../../lib/transfer/index';
@@ -31,6 +31,9 @@ export function TransferPage({ onBack }: { onBack: () => void }) {
   const [openMissed, setOpenMissed] = useState<number | null>(null);
   const cancel = useRef({ cancelled: false });
   const file = useRef<HTMLInputElement>(null);
+  const seq = useRef(0); // the latest service the user picked; older answers are dropped
+  // Leaving the page (Escape, closing Settings) stops a running transfer.
+  useEffect(() => () => { cancel.current.cancelled = true; seq.current++; }, []);
 
   useEffect(() => { sessionId().then((s) => { const on = s !== 'out'; setSignedYt(on); setToYouTube(on); }); }, []);
 
@@ -40,10 +43,11 @@ export function TransferPage({ onBack }: { onBack: () => void }) {
   };
 
   const connect = async (s: ServiceId) => {
+    const my = ++seq.current;
     setService(s); setLists(null); setErr(null); setPicked(new Set()); setLoading(true);
-    try { const l = await SERVICES[s].lists(); setLists(l); setPicked(new Set(l.filter((x) => x.kind === 'liked').map((x) => x.id))); }
-    catch (e) { fail(e); }
-    finally { setLoading(false); }
+    try { const l = await SERVICES[s].lists(); if (my !== seq.current) return; setLists(l); setPicked(new Set(l.filter((x) => x.kind === 'liked').map((x) => x.id))); }
+    catch (e) { if (my === seq.current) fail(e); }
+    finally { if (my === seq.current) setLoading(false); }
   };
 
   const run = async (jobs: Job[]) => {
@@ -114,7 +118,7 @@ export function TransferPage({ onBack }: { onBack: () => void }) {
     const name = SERVICES[service].name;
     const count = lists?.filter((l) => picked.has(l.id)).reduce((a, l) => a + (l.count ?? 0), 0) ?? 0;
     return (
-      <Page title={name} onBack={() => { setService(null); setErr(null); }}>
+      <Page title={name} onBack={() => { seq.current++; setService(null); setErr(null); setLoading(false); }}>
         {loading && <Group><Row icon="cloud" title={`Connecting to ${name}…`} sub="Using the session already signed in in Chrome" /></Group>}
         {err && (
           <Group>
@@ -128,11 +132,14 @@ export function TransferPage({ onBack }: { onBack: () => void }) {
         {lists && (
           <>
             <Group label="Choose what to bring over" foot={`Liked songs go into BitChord's Liked songs${toYouTube ? ' and get a like on YouTube Music' : ''}. Each playlist becomes its own playlist.`}>
-              <div className="s-row tap" onClick={() => setPicked(picked.size === lists.length ? new Set() : new Set(lists.map((l) => l.id)))}>
+              <div className="s-row tap" role="button" tabIndex={0} onClick={() => setPicked(picked.size === lists.length ? new Set() : new Set(lists.map((l) => l.id)))}
+                onKeyDown={keyActivate(() => setPicked(picked.size === lists.length ? new Set() : new Set(lists.map((l) => l.id))))}>
                 <div className="s-row-main"><span className="s-text"><span className="s-title">{picked.size === lists.length ? 'Unselect all' : 'Select all'}</span></span></div>
               </div>
               {lists.map((l) => (
-                <div key={l.id} className="s-row tap" onClick={() => { const n = new Set(picked); n.has(l.id) ? n.delete(l.id) : n.add(l.id); setPicked(n); }}>
+                <div key={l.id} className="s-row tap" role="checkbox" aria-checked={picked.has(l.id)} tabIndex={0}
+                  onClick={() => { const n = new Set(picked); n.has(l.id) ? n.delete(l.id) : n.add(l.id); setPicked(n); }}
+                  onKeyDown={keyActivate(() => { const n = new Set(picked); n.has(l.id) ? n.delete(l.id) : n.add(l.id); setPicked(n); })}>
                   <div className="s-row-main">
                     <span className="xfer-art">{l.image ? <img src={l.image} alt="" referrerPolicy="no-referrer" /> : <Icon name={l.kind === 'liked' ? 'heart' : 'queue'} size={18} />}</span>
                     <span className="s-text"><span className="s-title">{l.title}</span>{l.count != null && <span className="s-sub">{l.count} songs</span>}</span>

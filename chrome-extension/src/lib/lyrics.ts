@@ -130,19 +130,30 @@ async function lrclib(q: Query): Promise<Lyrics | null> {
 }
 
 let mxmToken: string | null = null;
+let mxmRetryAt = 0;
+/** Musixmatch answers unauthorised clients with made-up lyrics ("Wob gopini den…") on an
+ *  exact 4-second grid. Never show those. */
+function looksFake(lines: LyricLine[]): boolean {
+  if (lines.length < 6) return false;
+  const gaps = lines.slice(1, 12).map((l, i) => +(l.time - lines[i].time).toFixed(2));
+  return gaps.every((g) => g === gaps[0]) && lines.slice(0, 12).every((l) => Number.isInteger(l.time));
+}
 async function musixmatch(q: Query): Promise<Lyrics | null> {
   const base = 'https://apic-desktop.musixmatch.com/ws/1.1';
   const common = { app_id: 'web-desktop-app-v1.0', format: 'json' };
   if (!mxmToken) {
+    if (Date.now() < mxmRetryAt) return null;
     const t = await getJson(`${base}/token.get?${new URLSearchParams({ ...common, user_language: 'en', t: String(Date.now()) })}`);
     mxmToken = t?.message?.body?.user_token ?? null;
-    if (!mxmToken || /UpgradeOnlyUpgradeOnly/.test(mxmToken)) { mxmToken = null; return null; }
+    // An all-zero or "UpgradeOnly" token is a refusal, not a session.
+    if (!mxmToken || /UpgradeOnlyUpgradeOnly|^0+$/.test(mxmToken)) { mxmToken = null; mxmRetryAt = Date.now() + 5 * 60_000; return null; }
   }
   const p = new URLSearchParams({ ...common, usertoken: mxmToken, q_track: titleOnly(q.title), q_artist: firstArtist(q.artist), ...(q.duration ? { q_duration: String(Math.round(q.duration)) } : {}), namespace: 'lyrics_richsynched', subtitle_format: 'lrc' });
   const d = await getJson(`${base}/macro.subtitles.get?${p}`);
   const calls = d?.message?.body?.macro_calls;
   const lrc = calls?.['track.subtitles.get']?.message?.body?.subtitle_list?.[0]?.subtitle?.subtitle_body;
-  if (lrc) return { synced: parseLrc(lrc), plain: null };
+  if (d?.message?.header?.status_code === 401) { mxmToken = null; return null; }
+  if (lrc) { const lines = parseLrc(lrc); return looksFake(lines) ? null : { synced: lines, plain: null }; }
   const plain = calls?.['track.lyrics.get']?.message?.body?.lyrics?.lyrics_body;
   return plain ? { synced: null, plain } : null;
 }

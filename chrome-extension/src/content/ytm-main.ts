@@ -101,6 +101,9 @@ function snapshot(event?: string): PageState | null {
 }
 
 function send(kind: string, payload: unknown) {
+  // The user's own YouTube Music tabs stay silent: a state message every second
+  // from each of them would keep BitChord's service worker awake for nothing.
+  if (!IS_HELPER && kind !== 'ready') return;
   window.postMessage({ __bc: kind, payload }, location.origin);
 }
 const push = (event?: string) => { const s = snapshot(event); if (s) send('state', s); };
@@ -213,6 +216,8 @@ function run(c: PageCommand) {
 if (FIRST) {
   window.addEventListener('message', (e) => {
     if (e.source !== window || e.data?.__bc !== 'cmd') return;
+    // Commands only ever reach the background's own helper tab.
+    if (!IS_HELPER) { IS_HELPER = true; sessionStorage.setItem('bc-helper', '1'); }
     run(e.data.payload as PageCommand);
   });
 }

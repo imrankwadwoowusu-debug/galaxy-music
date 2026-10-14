@@ -48,7 +48,7 @@ export function QueuePane({ s }: { s: PlayerState }) {
     setMenuIdx(i);
   };
   const [drag, setDrag] = useState<Drag | null>(null);
-  const [leaving, setLeaving] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState<Set<string>>(new Set());
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const curRef = useRef<HTMLDivElement>(null);
@@ -63,14 +63,23 @@ export function QueuePane({ s }: { s: PlayerState }) {
   const keys = (() => { const seen = new Map<string, number>(); return local.queue.map((t) => { const n = seen.get(t.videoId) ?? 0; seen.set(t.videoId, n + 1); return `${t.videoId}#${n}`; }); })();
   const keyOf = (_t: Track, i: number) => keys[i];
 
+  const localRef = useRef(local);
+  localRef.current = local;
   const remove = (abs: number) => {
-    const t = local.queue[abs];
-    setLeaving(keyOf(t, abs));
+    const k = keyOf(local.queue[abs], abs);
+    setLeaving((x) => new Set(x).add(k));
     setMenu(null);
     setTimeout(() => {
-      setLeaving(null);
-      const q = local.queue.slice(); q.splice(abs, 1);
-      apply({ queue: q, index: abs < local.index ? local.index - 1 : local.index }, { type: 'remove-index', index: abs });
+      setLeaving((x) => { const n = new Set(x); n.delete(k); return n; });
+      // Find the row again by key: other removes may have shifted it meanwhile.
+      const cur = localRef.current;
+      const seen = new Map<string, number>();
+      const idx = cur.queue.findIndex((t) => { const n = seen.get(t.videoId) ?? 0; seen.set(t.videoId, n + 1); return `${t.videoId}#${n}` === k; });
+      if (idx < 0 || idx === cur.index) return;
+      const q = cur.queue.slice(); q.splice(idx, 1);
+      const next = { queue: q, index: idx < cur.index ? cur.index - 1 : cur.index };
+      localRef.current = next;
+      apply(next, { type: 'remove-index', index: idx });
     }, 160);
   };
   const playNext = (abs: number) => {
@@ -163,9 +172,11 @@ export function QueuePane({ s }: { s: PlayerState }) {
       <div
         key={k}
         data-vid={t.videoId}
-        className={`q-row ${kind} ${dragging ? 'dragging' : ''} ${drag && !dragging ? 'shifting' : ''} ${leaving === k ? 'leaving' : ''}`}
+        className={`q-row ${kind} ${dragging ? 'dragging' : ''} ${drag && !dragging ? 'shifting' : ''} ${leaving.has(k) ? 'leaving' : ''}`}
         style={style}
         onClick={() => { if (!drag && !editing) send({ type: 'play-index', index: i }); }}
+        role={editing ? undefined : 'button'} tabIndex={editing ? undefined : 0} aria-label={editing ? undefined : `Play ${t.title}`}
+        onKeyDown={(e) => { if (e.target === e.currentTarget && !editing && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); send({ type: 'play-index', index: i }); } }}
       >
         {editing && kind === 'up' && (
           <button className="q-del" title="Remove" aria-label={`Remove ${t.title}`} onClick={(e) => { e.stopPropagation(); remove(i); }}><span /></button>

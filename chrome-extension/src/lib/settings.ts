@@ -1,4 +1,4 @@
-import { clearMemory } from './cache';
+import { clearAllCache } from './cache';
 import { DEFAULT_SETTINGS, type Settings } from './types';
 
 export async function getSettings(): Promise<Settings> {
@@ -12,16 +12,18 @@ export async function getSettings(): Promise<Settings> {
   }
   return s;
 }
-export async function setSettings(patch: Partial<Settings>): Promise<Settings> {
-  const next = { ...(await getSettings()), ...patch };
-  await chrome.storage.local.set({ settings: next });
-  // Account changes change what YouTube Music returns: drop cached feeds.
-  if ('useAccount' in patch || 'authUser' in patch || 'defaultAccount' in patch) {
-    clearMemory();
-    const all = await chrome.storage.local.get(null);
-    await chrome.storage.local.remove(Object.keys(all).filter((k) => k.startsWith('c:')));
-  }
-  return next;
+// Writes are read-modify-write: chain them so two quick changes never drop one.
+let chain: Promise<unknown> = Promise.resolve();
+export function setSettings(patch: Partial<Settings>): Promise<Settings> {
+  const run = chain.then(async () => {
+    const next = { ...(await getSettings()), ...patch };
+    await chrome.storage.local.set({ settings: next });
+    // Account changes change what YouTube Music returns: drop cached feeds.
+    if ('useAccount' in patch || 'authUser' in patch || 'defaultAccount' in patch) await clearAllCache();
+    return next;
+  });
+  chain = run.catch(() => {});
+  return run;
 }
 
 /** Direct sources to try, in order, for the background engine. */

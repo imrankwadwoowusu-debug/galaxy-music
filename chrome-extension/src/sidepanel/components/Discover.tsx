@@ -3,8 +3,8 @@
 // artwork and metadata; playback picks the best source per song.
 import { useState } from 'react';
 import { DISCOVER_GENRES, DISCOVER_LANGUAGES, getDiscover, type DiscoverTrack } from '../../lib/discover';
-import { send, useCached, useSettings } from '../hooks';
-import { TrackRow } from './Items';
+import { useCached, useSettings } from '../hooks';
+import { playQueue, TrackRow } from './Items';
 import { Icon } from './Icon';
 import type { Ctx } from './Views';
 import { SkelRows } from './Views';
@@ -30,7 +30,7 @@ function Block({ title, sub, tracks, ctx, withDate, ranked, initial = 8 }: { tit
       <div className="section-head">
         <div>{sub && <div className="strap">{sub}</div>}<h2>{title}</h2></div>
         <div className="head-actions">
-          <button className="round-btn sm" title="Play all" onClick={() => send({ type: 'play-queue', tracks, index: 0 })}><Icon name="play" size={16} /></button>
+          <button className="round-btn sm" title="Play all" onClick={() => playQueue(tracks, 0)}><Icon name="play" size={16} /></button>
           {tracks.length > initial && <button className="more" onClick={() => setAll(!all)}>{all ? 'Less' : `All ${tracks.length}`}</button>}
         </div>
       </div>
