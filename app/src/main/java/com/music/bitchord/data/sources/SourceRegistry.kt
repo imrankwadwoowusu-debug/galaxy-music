@@ -34,8 +34,10 @@ data class SourceConfig(
     /** What the user called it. Blank falls back to the server's host, or the kind's own label. */
     val label: String = "",
     val baseUrl: String = "",
-    /** JioSaavn is opt-in because catalogue matches can select the wrong recording. */
-    val enabled: Boolean = kind != SourceKind.JIOSAAVN,
+    /** Debrid backend id (see [DebridProviders][com.music.bitchord.data.debrid.DebridProviders]); blank means TorBox. */
+    val provider: String = "",
+    /** JioSaavn and debrid sources are opt-in because catalogue matches can select the wrong recording. */
+    val enabled: Boolean = kind != SourceKind.JIOSAAVN && kind != SourceKind.DEBRID,
 ) {
     /** What the sources screen and the player show. Never blank. */
     val displayName: String
@@ -398,6 +400,7 @@ object SourceRegistry {
         SourceKind.CUSTOM_MODULE -> ModuleSource(config)
         SourceKind.MODULE -> ModuleSource(config)
         SourceKind.JIOSAAVN -> JioSaavnSource(config)
+        SourceKind.DEBRID -> DebridSource(config)
         SourceKind.YOUTUBE -> YouTubeSource(config)
     }
 
@@ -447,7 +450,7 @@ object SourceRegistry {
             .build()
             .toString()
 
-    private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.YOUTUBE)
+    private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.DEBRID, SourceKind.YOUTUBE)
 
     private const val KEY_SOURCES = "sources"
     /** One-shot migration: existing users must explicitly opt in again. */

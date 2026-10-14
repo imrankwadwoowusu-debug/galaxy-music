@@ -148,6 +148,7 @@ import com.music.bitchord.ui.screens.HistoryScreen
 import com.music.bitchord.ui.screens.ListenTogetherScreen
 import com.music.bitchord.ui.screens.PartyServerEditor
 import com.music.bitchord.ui.screens.SettingsScreen
+import com.music.bitchord.ui.components.DebridEditorAlert
 import com.music.bitchord.ui.screens.SourceEditorAlert
 import com.music.bitchord.ui.screens.SourcesScreen
 import com.music.bitchord.ui.screens.SpotifyCanvasAuthScreen
@@ -466,6 +467,7 @@ private fun BitChordApp(
     // background at all. Hosting it here also puts the scrim over the tab bar
     // and the mini player, like every other alert in the app.
     var editingSource by remember { mutableStateOf<SourceConfig?>(null) }
+    var editingDebrid by remember { mutableStateOf<SourceConfig?>(null) }
     var confirmJioSaavn by remember { mutableStateOf(false) }
     var editingPartyServer by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
@@ -2274,6 +2276,7 @@ private fun BitChordApp(
         BackHandler(enabled = showLastfmLogin) { showLastfmLogin = false }
         BackHandler(enabled = discordDialog != null) { discordDialog = null }
         BackHandler(enabled = editingSource != null) { editingSource = null }
+        BackHandler(enabled = editingDebrid != null) { editingDebrid = null }
         BackHandler(enabled = editingPartyServer) { editingPartyServer = false }
         BackHandler(enabled = showHistory) { showHistory = false }
         // Disabled while a detail page is open over the grid: that one's own
@@ -2479,6 +2482,7 @@ private fun BitChordApp(
                         SourcesScreen(
                             contentPadding = listPadding,
                             onEditSource = { editingSource = it },
+                            onEditDebrid = { editingDebrid = it },
                             onEditWebDav = { showWebDavEditor = true },
                             onEditSmb = { showSmbEditor = true },
                             onConfirmJioSaavn = { confirmJioSaavn = true },
@@ -4343,6 +4347,16 @@ private fun BitChordApp(
                     SourceRegistry.remove(config.id)
                     editingSource = null
                 },
+                scope = scope,
+            )
+        }
+
+        editingDebrid?.let { config ->
+            DebridEditorAlert(
+                hazeState = hazeState,
+                config = config,
+                onDismiss = { editingDebrid = null },
+                onSaved = { editingDebrid = null },
                 scope = scope,
             )
         }

@@ -9,6 +9,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import com.music.bitchord.BuildConfig
 import com.music.bitchord.data.TrackLog
 
 class PoTokenGenerator(context: Context) {
@@ -27,6 +28,14 @@ class PoTokenGenerator(context: Context) {
         TrackLog.d(TAG, "WebView state: supported=$webViewSupported, badImpl=$webViewBadImpl")
         if (!webViewSupported || webViewBadImpl) {
             TrackLog.d(TAG, "WebView not available: supported=$webViewSupported, badImpl=$webViewBadImpl")
+            return null
+        }
+        // No BotGuard keys configured (fresh checkout without local.properties):
+        // answer null so extraction falls back to non-PoToken clients instead
+        // of throwing into the extraction library, which may not expect a
+        // provider failure here.
+        if (BuildConfig.BOTGUARD_API_KEY.isBlank() || BuildConfig.BOTGUARD_REQUEST_KEY.isBlank()) {
+            TrackLog.d(TAG, "BotGuard keys not configured; PO-token minting disabled")
             return null
         }
 
