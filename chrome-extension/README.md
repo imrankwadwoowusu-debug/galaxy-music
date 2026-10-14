@@ -155,3 +155,13 @@ Improved:
 ## v0.7.2 (14 Oct 2026)
 - Removed the "New" tab: new releases now sit at the top of Explore, with genre chips and no language chips.
 - The languages for new releases moved to Settings → New releases languages.
+
+## v0.8.0 (14 Oct 2026)
+- Up Next queue, modelled on Apple Music:
+  - The song now playing, then Playing Next with its song count and total time.
+  - History can be shown above them.
+  - Drag the handle to reorder songs with a mouse, touch or pen; the list scrolls itself near the edges. With a handle focused, the arrow keys move a song.
+  - The ⋯ menu on each song has Play next, Move to end and Remove from queue. Play next also works on songs in History.
+  - Edit mode adds remove buttons to every song and a Clear button for the whole list.
+  - Edits show at once. The background moves songs without interrupting the one playing, and the YouTube Music tab is told about the new next song.
+- Removed the equalizer from the player and from Settings. Audio now always plays flat.

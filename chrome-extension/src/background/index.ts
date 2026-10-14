@@ -51,7 +51,7 @@ chrome.storage.onChanged.addListener((c) => {
 });
 async function sendEq() {
   if (!(await chrome.offscreen.hasDocument?.())) return;
-  chrome.runtime.sendMessage({ target: 'offscreen', cmd: 'eq', on: cfg.eqOn, gains: cfg.eqGains }).catch(() => {});
+  chrome.runtime.sendMessage({ target: 'offscreen', cmd: 'eq', on: false, gains: cfg.eqGains }).catch(() => {});
 }
 
 // Ring buffer of recent engine events, readable from DevTools: self.__bitchordLog
@@ -111,7 +111,7 @@ async function ensureOffscreen() {
       justification: 'Play music while the BitChord side panel is closed',
     });
     await cfgReady;
-    await chrome.runtime.sendMessage({ target: 'offscreen', cmd: 'eq', on: cfg.eqOn, gains: cfg.eqGains }).catch(() => {});
+    await chrome.runtime.sendMessage({ target: 'offscreen', cmd: 'eq', on: false, gains: cfg.eqGains }).catch(() => {});
   } catch (e) {
     if (!String(e).includes('single offscreen')) throw e;
   }
@@ -436,6 +436,17 @@ async function advance(dir: 1 | -1, auto = false, fade = 0) {
   await playCurrent(fade);
 }
 
+/** Move one queue item; the playing song keeps playing, wherever it ends up. */
+function moveItem(from: number, to: number) {
+  const n = state.queue.length;
+  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return;
+  const [item] = state.queue.splice(from, 1);
+  state.queue.splice(to, 0, item);
+  if (from === state.index) state.index = to;
+  else if (from < state.index && to >= state.index) state.index--;
+  else if (from > state.index && to <= state.index) state.index++;
+}
+
 function shuffleRest() {
   const head = state.queue.slice(0, state.index + 1);
   const rest = state.queue.slice(state.index + 1);
@@ -628,9 +639,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
       case 'remove-index':
+        if (cmd.index === state.index || cmd.index < 0 || cmd.index >= state.queue.length) break;
         state.queue.splice(cmd.index, 1);
         if (cmd.index < state.index) state.index--;
         break;
+      case 'move': moveItem(cmd.from, cmd.to); break;
+      case 'play-next-index':
+        if (cmd.index !== state.index) moveItem(cmd.index, cmd.index < state.index ? state.index : state.index + 1);
+        break;
+      case 'clear-upnext': state.queue = state.queue.slice(0, state.index + 1); break;
       case 'toggle':
         if (!state.engine && state.track) await playCurrent();
         else { state.error = null; await live.toggle(); }
@@ -652,7 +669,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       case 'open-tab': chrome.tabs.create({ url: chrome.runtime.getURL('sidepanel.html?mode=tab') }); break;
     }
-    if (state.engine === 'tab' && ['add-next', 'add-queue', 'append', 'remove-index', 'shuffle', 'repeat', 'sleep'].includes(cmd?.type)) sendHint();
+    if (state.engine === 'tab' && ['add-next', 'add-queue', 'append', 'remove-index', 'move', 'play-next-index', 'clear-upnext', 'shuffle', 'repeat', 'sleep'].includes(cmd?.type)) sendHint();
     persist();
     broadcast();
     sendResponse(state);

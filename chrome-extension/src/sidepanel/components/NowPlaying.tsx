@@ -1,13 +1,13 @@
 import { sized } from '../../lib/innertube';
 import { useEffect, useRef, useState } from 'react';
-import { EQ_BANDS, EQ_PRESETS, type PlayerState, type Settings } from '../../lib/types';
-import { setSettings } from '../../lib/settings';
+import type { PlayerState, Settings } from '../../lib/types';
+import { QueuePane } from './Queue';
 import { getLyrics, lyricsDebug, type LyricLine, type Lyrics } from '../../lib/lyrics';
 import { getLiked, toggleLiked } from '../../lib/history';
 import { fmt, send, useLivePosition } from '../hooks';
 import { Icon } from './Icon';
 
-type Pane = 'none' | 'lyrics' | 'queue' | 'eq';
+type Pane = 'none' | 'lyrics' | 'queue';
 
 export function Controls({ s, size = 'lg' }: { s: PlayerState; size?: 'lg' | 'sm' }) {
   const big = size === 'lg';
@@ -97,59 +97,6 @@ function LyricsPane({ s, settings }: { s: PlayerState; settings: Settings }) {
   );
 }
 
-function QueuePane({ s }: { s: PlayerState }) {
-  const up = s.queue.map((t, i) => ({ t, i })).slice(s.index + 1);
-  if (!up.length) return <div className="pane-empty">Queue is empty</div>;
-  return (
-    <div className="queue">
-      <div className="pane-title">Up next</div>
-      {up.map(({ t, i }) => (
-        <div key={`${t.videoId}-${i}`} className="q-row" onClick={() => send({ type: 'play-index', index: i })}>
-          <img src={t.thumbnail} alt="" loading="lazy" />
-          <div className="q-meta"><div className="track-title">{t.title}</div><div className="track-sub">{t.artists}</div></div>
-          <button className="icon-btn" title="Remove" onClick={(e) => { e.stopPropagation(); send({ type: 'remove-index', index: i }); }}><Icon name="close" size={16} /></button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-const bandLabel = (f: number) => (f >= 1000 ? `${f / 1000}k` : String(f));
-export function EqPane({ settings }: { settings: Settings }) {
-  const [gains, setGains] = useState(settings.eqGains);
-  useEffect(() => setGains(settings.eqGains), [settings.eqGains.join()]);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const setBand = (i: number, v: number) => {
-    const g = gains.map((x, j) => (j === i ? v : x));
-    setGains(g);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setSettings({ eqGains: g, eqPreset: 'Custom', eqOn: true }), 120);
-  };
-  return (
-    <div className="eq">
-      <div className="eq-head">
-        <div className="pane-title">Equalizer</div>
-        <button type="button" role="switch" aria-checked={settings.eqOn} aria-label="Equalizer" className={`switch ${settings.eqOn ? 'on' : ''}`} onClick={() => setSettings({ eqOn: !settings.eqOn })}><span className="knob" /></button>
-      </div>
-      <div className="eq-presets">
-        {Object.keys(EQ_PRESETS).map((p) => (
-          <button key={p} className={`eq-chip ${settings.eqOn && settings.eqPreset === p ? "on" : ""}`} onClick={() => setSettings({ eqPreset: p, eqGains: EQ_PRESETS[p], eqOn: true })}>{p}</button>
-        ))}
-        {settings.eqPreset === 'Custom' && <button className="eq-chip on">Custom</button>}
-      </div>
-      <div className={`eq-bands ${settings.eqOn ? '' : 'off'}`}>
-        {EQ_BANDS.map((f, i) => (
-          <label key={f} className="eq-band">
-            <span className="eq-db">{gains[i] > 0 ? '+' : ''}{gains[i]}</span>
-            <input type="range" min={-12} max={12} step={1} value={gains[i]} onChange={(e) => setBand(i, Number(e.target.value))} aria-label={`${bandLabel(f)} Hz`} />
-            <span className="eq-hz">{bandLabel(f)}</span>
-          </label>
-        ))}
-      </div>
-      <p className="eq-note">Works on JioSaavn and YouTube direct streams. The YouTube Music tab fallback plays without it.</p>
-    </div>
-  );
-}
 
 const SLEEP_OPTIONS: { label: string; min: number }[] = [
   { label: '15 minutes', min: 15 }, { label: '30 minutes', min: 30 }, { label: '45 minutes', min: 45 },
@@ -201,7 +148,7 @@ export function NowPlaying({ s, settings, onArtist }: { s: PlayerState; settings
       {pane === 'none' ? (
         <div className="np-art"><img src={sized(t.thumbnail, 544)} alt={t.title} /></div>
       ) : (
-        <div className="np-pane">{pane === 'lyrics' ? <LyricsPane s={s} settings={settings} /> : pane === 'eq' ? <EqPane settings={settings} /> : <QueuePane s={s} />}</div>
+        <div className="np-pane">{pane === 'lyrics' ? <LyricsPane s={s} settings={settings} /> : <QueuePane s={s} />}</div>
       )}
       <div className="np-titlebar">
         <div className="np-titles">
@@ -227,7 +174,7 @@ export function NowPlaying({ s, settings, onArtist }: { s: PlayerState; settings
       <div className="np-bottom">
         <span className="np-side">
           <button className={`icon-btn ${pane === 'lyrics' ? 'on' : ''}`} title="Lyrics" onClick={() => setPane(pane === 'lyrics' ? 'none' : 'lyrics')}><Icon name="lyrics" /></button>
-          <button className={`icon-btn ${pane === 'eq' ? 'on' : ''} ${settings.eqOn ? 'eq-live' : ''}`} title="Equalizer" onClick={() => setPane(pane === 'eq' ? 'none' : 'eq')}><Icon name="tune" size={20} /></button>
+          <SleepButton s={s} />
         </span>
         {settings.hideVolume ? <span className="vol" /> : (
           <label className="vol"><Icon name="volume" size={18} />
@@ -235,8 +182,7 @@ export function NowPlaying({ s, settings, onArtist }: { s: PlayerState; settings
           </label>
         )}
         <span className="np-side">
-          <SleepButton s={s} />
-          <button className={`icon-btn ${pane === 'queue' ? 'on' : ''}`} title="Queue" onClick={() => setPane(pane === 'queue' ? 'none' : 'queue')}><Icon name="queue" /></button>
+          <button className={`icon-btn ${pane === 'queue' ? 'on' : ''}`} title="Up Next" aria-label="Up Next" onClick={() => setPane(pane === 'queue' ? 'none' : 'queue')}><Icon name="queue" /></button>
         </span>
       </div>
     </div>

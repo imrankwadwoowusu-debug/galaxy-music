@@ -9,7 +9,6 @@ import { AUTH_COOKIE_NAMES, appleMusicSignedIn, googleAccounts, openSignIn, yout
 import type { AccountInfo } from '../../lib/innertube';
 import { DEFAULT_LYRICS_ORDER, getLyricsPrefs, LYRICS_SOURCES, setLyricsPrefs, type LyricsPrefs, type LyricsSourceId } from '../../lib/lyrics';
 import { TransferPage } from './Transfer';
-import { EqPane } from './NowPlaying';
 import { useSettings } from '../hooks';
 import { lastfmFinishAuth, lastfmStartAuth } from '../../lib/lastfm';
 import { DISCOVER_LANGUAGES } from '../../lib/discover';
@@ -306,14 +305,10 @@ function LyricsSourcesSheet({ onClose }: { onClose: () => void }) {
 }
 
 // ---------- main Settings ----------
-function EqPage({ onBack }: { onBack: () => void }) {
-  const live = useSettings();
-  return <Page title="Equalizer" onBack={onBack}><div className="s-card eq-card"><EqPane settings={live} /></div></Page>;
-}
 
 export function SettingsPage({ me, onClose, initial }: { me: AccountInfo | null; onClose: () => void; initial?: 'transfer' }) {
   const [s, save] = useStoreSettings();
-  const [page, setPage] = useState<'main' | 'accounts' | 'sources' | 'transfer' | 'eq'>(initial ?? 'main');
+  const [page, setPage] = useState<'main' | 'accounts' | 'sources' | 'transfer'>(initial ?? 'main');
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [lyricsSummary, setLyricsSummary] = useState('');
   const [toast, setToast] = useState('');
@@ -342,7 +337,7 @@ export function SettingsPage({ me, onClose, initial }: { me: AccountInfo | null;
 
   return (
     <div className="settings-layer">
-      {page === 'eq' ? <EqPage onBack={() => setPage('main')} /> : page === 'transfer' ? <TransferPage onBack={() => (initial ? onClose() : setPage('main'))} /> : page === 'accounts' ? <AccountsPage onBack={() => setPage('main')} /> : page === 'sources' ? <SourcesPage onBack={() => setPage('main')} /> : (
+      {page === 'transfer' ? <TransferPage onBack={() => (initial ? onClose() : setPage('main'))} /> : page === 'accounts' ? <AccountsPage onBack={() => setPage('main')} /> : page === 'sources' ? <SourcesPage onBack={() => setPage('main')} /> : (
         <Page title="Settings" onBack={onClose}>
           <Group>
             <Row icon="person" title="Account & integrations" sub={me ? `${me.name}${me.email ? ' · ' + me.email : ''}` : 'Not signed in'} onClick={() => setPage('accounts')} />
@@ -375,7 +370,6 @@ export function SettingsPage({ me, onClose, initial }: { me: AccountInfo | null;
             <Row icon="waves" title="Crossfade" sub={s.crossfade ? `Songs blend for ${s.crossfade} seconds` : 'Off: songs change with a short fade'} value={s.crossfade ? `${s.crossfade}s` : 'Off'}>
               <input className="s-slider" type="range" min={0} max={12} step={1} value={s.crossfade} style={{ ['--p' as string]: `${(s.crossfade / 12) * 100}%` }} onChange={(e) => save({ crossfade: Number(e.target.value) })} aria-label="Crossfade seconds" />
             </Row>
-            <Row icon="tune" title="Equalizer" sub={s.eqOn ? s.eqPreset : 'Off'} onClick={() => setPage('eq')} />
             <Row icon="volume-off" title="Hide volume bar" sub="Removes the volume slider from the player" toggle={{ on: s.hideVolume, set: (v) => save({ hideVolume: v }) }} />
           </Group>
 
