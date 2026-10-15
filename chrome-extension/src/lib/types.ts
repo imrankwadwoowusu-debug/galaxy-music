@@ -133,6 +133,7 @@ export type UiCommand =
   | { type: 'play-index'; index: number }
   | { type: 'add-next'; track: Track }
   | { type: 'add-queue'; track: Track }
+  | { type: 'add-next-many'; tracks: Track[] }
   | { type: 'append'; tracks: Track[] }
   | { type: 'remove-index'; index: number }
   | { type: 'move'; from: number; to: number } // absolute queue indices

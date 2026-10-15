@@ -9,6 +9,8 @@ import { send, useCached } from '../hooks';
 import { CardTile, playQueue, playSongWithRadio, TrackRow } from './Items';
 import { DiscoverPage } from './Discover';
 import { Icon } from './Icon';
+import { openCardMenu, openNewPlaylist, useContextMenu } from './Actions';
+import { collKey, getLibCollections, getLibSongs, getPlaylists, localId, playlistCard } from '../../lib/library';
 
 
 export interface Ctx { activeId: string | null; onArtist: (n: string, id?: string) => void; onOpen: (c: Card) => void }
@@ -298,11 +300,61 @@ export function ExplorePage({ ctx, onMood }: { ctx: Ctx; onMood: (c: MoodChip) =
 }
 
 // ---------- Library ----------
-export function LibraryPage({ ctx, me, signedIn, session, onSignIn, onTransfer }: { ctx: Ctx; me: { name: string } | null; signedIn: boolean; session: string; onSignIn: () => void; onTransfer: () => void }) {
+// ---------- Library (Apple Music layout: category rows + Recently Added) ----------
+const LIB_ROWS: { id: string; label: string; icon: string }[] = [
+  { id: 'playlists', label: 'Playlists', icon: 'playlists-o' },
+  { id: 'albums', label: 'Albums', icon: 'album-o' },
+  { id: 'songs', label: 'Songs', icon: 'note-o' },
+  { id: 'favorites', label: 'Favorite Songs', icon: 'star-o' },
+  { id: 'recent', label: 'Recently Played', icon: 'clock-o' },
+  { id: 'made', label: 'Made For You', icon: 'made-for-you' },
+  { id: 'transfer', label: 'Transfer Music', icon: 'swap-o' },
+];
+const DEFAULT_LIB_ROWS = ['playlists', 'albums', 'songs', 'favorites', 'recent', 'made', 'transfer'];
+function useStored<T>(get: () => Promise<T[]>, key: string) {
+  const [v, setV] = useState<T[] | null>(null);
+  useEffect(() => {
+    get().then(setV);
+    const fn = (c: Record<string, unknown>) => { if (key in c) get().then(setV); };
+    chrome.storage.onChanged.addListener(fn);
+    return () => chrome.storage.onChanged.removeListener(fn);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return v;
+}
+function shuffle<T>(a: T[]): T[] { const t = [...a]; for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [t[i], t[j]] = [t[j], t[i]]; } return t; }
+function PlayShuffle({ tracks, more }: { tracks: Track[]; more?: () => void }) {
+  return (
+    <div className="coll-actions top am">
+      <button className="am-btn" disabled={!tracks.length} onClick={() => playQueue(tracks, 0)}><Icon name="play" size={18} /> Play</button>
+      <button className="am-btn" disabled={!tracks.length} onClick={() => playQueue(shuffle(tracks), 0)}><Icon name="shuffle" size={18} /> Shuffle</button>
+      {more && <button className="am-round" aria-label="More options" aria-haspopup="menu" onClick={more}><Icon name="more" size={18} /></button>}
+    </div>
+  );
+}
+function Back({ onClick }: { onClick: () => void }) {
+  return <button className="back-btn inline" onClick={onClick}><Icon name="back" size={20} /> Library</button>;
+}
+function Empty({ icon, title, sub, children }: { icon: string; title: string; sub: string; children?: ReactNode }) {
+  return <div className="empty-state am"><Icon name={icon} size={44} /><h3>{title}</h3><p>{sub}</p>{children}</div>;
+}
+
+export function LibraryPage({ ctx, signedIn, session, onSignIn, onTransfer }: { ctx: Ctx; me: { name: string } | null; signedIn: boolean; session: string; onSignIn: () => void; onTransfer: () => void }) {
   const recent = useStoredTracks(getRecent, 'recentlyPlayed');
   const liked = useStoredTracks(getLiked, 'liked');
+  const songs = useStored(getLibSongs, 'libSongs');
+  const colls = useStored(getLibCollections, 'libCollections');
+  const mine = useStored(getPlaylists, 'localPlaylists');
   const lists = useCached(signedIn ? `library:playlists:${session}` : null, getLibraryPlaylists, HOUR);
+  const made = useCached(signedIn ? `library:made:${session}` : null, async () => (await getHome()).shelves.filter((x) => /mix|for you|made for|discover/i.test(x.title)).flatMap((x) => x.cards).slice(0, 24), HOUR);
   const [view, setView] = useState<string>('home');
+  const [edit, setEdit] = useState(false);
+  const [rows, setRows] = useState<string[]>(DEFAULT_LIB_ROWS);
+  useEffect(() => { chrome.storage.local.get('libraryRows').then((r) => { if (Array.isArray(r.libraryRows)) setRows(r.libraryRows); }); }, []);
+  const toggleRow = (id: string) => {
+    const next = rows.includes(id) ? rows.filter((x) => x !== id) : DEFAULT_LIB_ROWS.filter((x) => x === id || rows.includes(x));
+    setRows(next); chrome.storage.local.set({ libraryRows: next });
+  };
   const [imported, setImported] = useState<ImportedPlaylist[] | null>(null);
   useEffect(() => {
     getImported().then(setImported);
@@ -310,74 +362,145 @@ export function LibraryPage({ ctx, me, signedIn, session, onSignIn, onTransfer }
     chrome.storage.onChanged.addListener(fn);
     return () => chrome.storage.onChanged.removeListener(fn);
   }, []);
+  const home = () => setView('home');
   const imp = view.startsWith('imp:') ? imported?.find((p) => p.id === view.slice(4)) : null;
   if (imp) {
     return (
       <div>
-        <button className="back-btn inline" onClick={() => setView('home')}><Icon name="back" size={20} /> Library</button>
+        <button className="back-btn inline" onClick={() => setView('playlists')}><Icon name="back" size={20} /> Playlists</button>
         <h2 className="sub-title">{imp.title}</h2>
         <p className="row-sub" style={{ margin: '-6px 0 12px' }}>From {imp.source} · {imp.tracks.length} songs{imp.missed.length ? ` · ${imp.missed.length} not found` : ''}{imp.ytmPlaylistId ? ' · also in YouTube Music' : ''}</p>
         <div className="coll-actions top">
           <button className="pill white" disabled={!imp.tracks.length} onClick={() => playQueue(imp.tracks, 0)}><Icon name="play" size={16} /> Play</button>
-          <button className="pill ghost" onClick={async () => { if (confirm(`Remove "${imp.title}" from BitChord?`)) { await deleteImported(imp.id); setView('home'); } }}><Icon name="trash" size={16} /> Remove</button>
+          <button className="pill ghost" onClick={async () => { if (confirm(`Remove "${imp.title}" from BitChord?`)) { await deleteImported(imp.id); setView('playlists'); } }}><Icon name="trash" size={16} /> Remove</button>
         </div>
         <TrackGrid tracks={imp.tracks} ctx={ctx} />
       </div>
     );
   }
-  if (view === 'liked' || view === 'recent') {
-    const list = view === 'liked' ? liked : recent;
+  if (view === 'favorites' || view === 'recent' || view === 'songs') {
+    const list = view === 'favorites' ? liked : view === 'recent' ? recent : songs;
+    const label = LIB_ROWS.find((r) => r.id === view)!;
     return (
       <div>
-        <button className="back-btn inline" onClick={() => setView('home')}><Icon name="back" size={20} /> Library</button>
-        <h2 className="sub-title">{view === 'liked' ? 'Liked songs' : 'Recently played'}</h2>
+        <Back onClick={home} />
+        <h2 className="sub-title">{label.label}</h2>
         {!list ? <SkelRows /> : list.length ? (
-          <>
-            <div className="coll-actions top"><button className="pill white" onClick={() => playQueue(list, 0)}><Icon name="play" size={16} /> Play</button></div>
-            <TrackGrid tracks={list} ctx={ctx} />
-          </>
-        ) : <div className="empty-state"><p>Nothing here yet.</p></div>}
+          <><PlayShuffle tracks={list} /><TrackGrid tracks={list} ctx={ctx} /></>
+        ) : view === 'songs'
+          ? <Empty icon="note-o" title="Add Songs to Your Library" sub="Tap ⋯ on any song, then Add to Library." />
+          : view === 'favorites' ? <Empty icon="star-o" title="No Favorites Yet" sub="Tap the star on Now Playing, or Favorite in a song’s menu." />
+          : <Empty icon="clock-o" title="Nothing Played Yet" sub="Songs you play show up here." />}
       </div>
     );
   }
+  if (view === 'albums') {
+    const albums = colls?.filter((c) => c.kind === 'album') ?? null;
+    return (
+      <div>
+        <Back onClick={home} />
+        <h2 className="sub-title">Albums</h2>
+        {!albums ? <SkelCards /> : albums.length
+          ? <div className="card-grid lib-grid">{albums.map((c) => <CardTile key={collKey(c)} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} more />)}</div>
+          : <Empty icon="album-o" title="Add Albums to Your Library" sub="Long-press or right-click an album, or tap ⋯ on its page, then Add to Library." />}
+      </div>
+    );
+  }
+  if (view === 'playlists') {
+    const saved = colls?.filter((c) => c.kind === 'playlist') ?? [];
+    return (
+      <div>
+        <Back onClick={home} />
+        <h2 className="sub-title">Playlists</h2>
+        <div className="am-list">
+          <button className="am-row" onClick={openNewPlaylist} data-action="new-playlist">
+            <span className="am-art add"><Icon name="plus" size={26} /></span>
+            <span className="am-text accent">New Playlist…</span>
+          </button>
+          {mine?.map((p) => <PlaylistRow key={p.id} c={playlistCard(p)} onOpen={ctx.onOpen} />)}
+          {imported?.map((p) => (
+            <button key={p.id} className="am-row" onClick={() => setView(`imp:${p.id}`)}>
+              <span className="am-art">{p.image ? <img src={p.image} alt="" referrerPolicy="no-referrer" /> : <Icon name="playlists-o" size={22} />}</span>
+              <span className="am-text">{p.title}<small>{p.source} · {p.tracks.length} songs</small></span>
+              <Icon name="chev-right" size={18} />
+            </button>
+          ))}
+          {saved.map((c) => <PlaylistRow key={collKey(c)} c={c} onOpen={ctx.onOpen} />)}
+        </div>
+        {signedIn && (lists.loading ? <SkelCards /> : lists.data?.length ? (
+          <section className="section">
+            <SectionHead title="YouTube Music" sub="Your playlists" />
+            <div className="card-grid lib-grid">{lists.data.map((c, i) => <CardTile key={i} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} more />)}</div>
+          </section>
+        ) : lists.error ? <Err msg={lists.error} retry={lists.retry} /> : null)}
+      </div>
+    );
+  }
+  if (view === 'made') {
+    return (
+      <div>
+        <Back onClick={home} />
+        <h2 className="sub-title">Made For You</h2>
+        {!signedIn ? <Empty icon="made-for-you" title="Mixes Made For You" sub="Sign in to YouTube Music to get your personal mixes."><button className="pill white" onClick={onSignIn}>Sign In</button></Empty>
+          : made.loading ? <SkelCards /> : made.data?.length
+            ? <div className="card-grid lib-grid">{made.data.map((c, i) => <CardTile key={i} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} more />)}</div>
+            : made.error ? <Err msg={made.error} retry={made.retry} /> : <Empty icon="made-for-you" title="No Mixes Yet" sub="Keep listening and YouTube Music will make some." />}
+      </div>
+    );
+  }
+  // Recently Added: everything you put in the library, newest first.
+  const added: (Card & { at: number })[] = [
+    ...(mine ?? []).map((p) => ({ ...playlistCard(p), at: p.created })),
+    ...(colls ?? []).map((c) => ({ ...c, at: c.addedAt })),
+    ...(songs ?? []).map((t) => ({ kind: 'song' as const, title: t.title, subtitle: t.artists, thumbnail: t.thumbnail, videoId: t.videoId, at: t.addedAt })),
+  ].sort((a, b) => b.at - a.at).slice(0, 12);
+  const count: Record<string, number | undefined> = { songs: songs?.length, favorites: liked?.length, recent: recent?.length, albums: colls?.filter((c) => c.kind === 'album').length, playlists: (mine?.length ?? 0) + (imported?.length ?? 0) + (colls?.filter((c) => c.kind === 'playlist').length ?? 0) };
   return (
-    <div>
-      {!signedIn && <SignInBanner onSignIn={onSignIn} />}
-      <div className="group">
-        <button className="row" onClick={() => setView('liked')}>
-          <span className="row-icon liked"><Icon name="heart" size={18} /></span>
-          <span className="row-text"><span className="row-title">Liked songs</span><span className="row-sub">{liked?.length ?? 0} {liked?.length === 1 ? 'song' : 'songs'}</span></span>
-          <Icon name="chev-right" size={20} />
-        </button>
-        <button className="row" onClick={() => setView('recent')}>
-          <span className="row-icon"><Icon name="history" size={18} /></span>
-          <span className="row-text"><span className="row-title">Recently played</span><span className="row-sub">{recent?.length ?? 0} {recent?.length === 1 ? 'song' : 'songs'}</span></span>
-          <Icon name="chev-right" size={20} />
-        </button>
-        {imported?.map((p) => (
-          <button key={p.id} className="row" onClick={() => setView(`imp:${p.id}`)}>
-            <span className="row-icon">{p.image ? <img src={p.image} alt="" referrerPolicy="no-referrer" /> : <Icon name="queue" size={18} />}</span>
-            <span className="row-text"><span className="row-title">{p.title}</span><span className="row-sub">{p.source} · {p.tracks.length} songs</span></span>
-            <Icon name="chev-right" size={20} />
+    <div className="library-am">
+      <div className="lib-title">
+        <h1 className="big-title">Library</h1>
+        <button className="edit-link" onClick={() => setEdit(!edit)} aria-pressed={edit}>{edit ? 'Done' : 'Edit'}</button>
+      </div>
+      {!signedIn && !edit && <SignInBanner onSignIn={onSignIn} />}
+      <div className="am-cats" role={edit ? 'group' : undefined} aria-label={edit ? 'Choose what shows in Library' : undefined}>
+        {(edit ? LIB_ROWS : LIB_ROWS.filter((r) => rows.includes(r.id))).map((r) => edit ? (
+          <button key={r.id} className="am-cat editing" role="checkbox" aria-checked={rows.includes(r.id)} onClick={() => toggleRow(r.id)}>
+            <span className={`am-check ${rows.includes(r.id) ? 'on' : ''}`}>{rows.includes(r.id) && <Icon name="check" size={14} />}</span>
+            <span className="am-cat-ico"><Icon name={r.icon} size={26} /></span>
+            <span className="am-cat-label">{r.label}</span>
+          </button>
+        ) : (
+          <button key={r.id} className="am-cat" data-row={r.id} onClick={() => (r.id === 'transfer' ? onTransfer() : setView(r.id))}>
+            <span className="am-cat-ico"><Icon name={r.icon} size={26} /></span>
+            <span className="am-cat-label">{r.label}</span>
+            {count[r.id] ? <span className="am-cat-count">{count[r.id]}</span> : null}
+            <Icon name="chev-right" size={18} />
           </button>
         ))}
-        <button className="row" onClick={onTransfer}>
-          <span className="row-icon"><Icon name="swap" size={18} /></span>
-          <span className="row-text"><span className="row-title">Transfer music</span><span className="row-sub">From Spotify or Apple Music</span></span>
-          <Icon name="chev-right" size={20} />
-        </button>
       </div>
-      {recent && recent.length > 0 && (
+      {!edit && (added.length > 0 ? (
+        <section className="section">
+          <SectionHead title="Recently Added" />
+          <div className="card-grid lib-grid">{added.map((c) => <CardTile key={collKey(c)} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} more />)}</div>
+        </section>
+      ) : recent && recent.length > 0 ? (
         <Scroller title="Jump back in">
           {recent.slice(0, 16).map((t, k) => <RecentTile key={t.videoId} t={t} list={recent} i={k} active={ctx.activeId === t.videoId} />)}
         </Scroller>
-      )}
-      {signedIn && (lists.loading ? <SkelCards /> : lists.data?.length ? (
-        <section className="section">
-          <SectionHead title="Your playlists" sub="YouTube Music" />
-          <div className="card-grid">{lists.data.map((c, i) => <CardTile key={i} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} />)}</div>
-        </section>
-      ) : lists.error ? <Err msg={lists.error} retry={lists.retry} /> : null)}
+      ) : null)}
+    </div>
+  );
+}
+
+function PlaylistRow({ c, onOpen }: { c: Card; onOpen: (c: Card) => void }) {
+  const menu = useContextMenu(() => openCardMenu(c));
+  return (
+    <div className="am-row" {...menu}>
+      <button className="am-row-hit" onClick={() => onOpen(c)}>
+        <span className="am-art">{c.thumbnail ? <img src={sized(c.thumbnail, 120)} alt="" referrerPolicy="no-referrer" /> : <Icon name="playlists-o" size={22} />}</span>
+        <span className="am-text">{c.title}<small>{c.subtitle}</small></span>
+      </button>
+      <button className="icon-btn more-btn" aria-label={`More options for ${c.title}`} aria-haspopup="menu" onClick={() => openCardMenu(c)}><Icon name="more" /></button>
     </div>
   );
 }
@@ -482,6 +605,36 @@ function TopResult({ shelf, ctx }: { shelf: Shelf; ctx: Ctx }) {
 
 // ---------- Album / playlist ----------
 export function CollectionView({ card, ctx, onBack }: { card: Card; ctx: Ctx; onBack: () => void }) {
+  const lid = localId(card);
+  return lid ? <LocalPlaylistView id={lid} ctx={ctx} onBack={onBack} /> : <RemoteCollection card={card} ctx={ctx} onBack={onBack} />;
+}
+
+function LocalPlaylistView({ id, ctx, onBack }: { id: string; ctx: Ctx; onBack: () => void }) {
+  const lists = useStored(getPlaylists, 'localPlaylists');
+  const p = lists?.find((x) => x.id === id);
+  useEffect(() => { if (lists && !p) onBack(); }, [lists, p, onBack]);
+  if (!p) return <SkelRows n={6} />;
+  const card = playlistCard(p);
+  return (
+    <div>
+      <button className="back-btn" onClick={onBack} aria-label="Back"><Icon name="back" size={22} /></button>
+      <div className="coll-head">
+        {p.tracks[0] ? <img src={sized(p.tracks[0].thumbnail, 544)} alt="" /> : <span className="coll-ph"><Icon name="playlists-o" size={56} /></span>}
+        <div className="coll-info">
+          <div className="coll-kind">Playlist</div>
+          <h1 className="coll-title">{p.title}</h1>
+          <div className="coll-meta">{card.subtitle}</div>
+          <PlayShuffle tracks={p.tracks} more={() => openCardMenu(card)} />
+        </div>
+      </div>
+      {p.tracks.length
+        ? <div className="track-grid">{p.tracks.map((t, i) => <TrackRow key={t.videoId} t={t} list={p.tracks} i={i} activeId={ctx.activeId} onArtist={ctx.onArtist} playlistId={p.id} />)}</div>
+        : <Empty icon="playlist-add" title="This Playlist Is Empty" sub="Tap ⋯ on any song, then Add to a Playlist…" />}
+    </div>
+  );
+}
+
+function RemoteCollection({ card, ctx, onBack }: { card: Card; ctx: Ctx; onBack: () => void }) {
   const { data, error, loading, retry } = useCached(`coll:${card.browseId ?? card.playlistId ?? card.title}`, () => getCollection(card), HOUR);
   return (
     <div>
@@ -503,6 +656,7 @@ export function CollectionView({ card, ctx, onBack }: { card: Card; ctx: Ctx; on
                   const t = [...data!.tracks]; for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [t[i], t[j]] = [t[j], t[i]]; }
                   playQueue(t, 0);
                 }}><Icon name="shuffle" size={16} /> Shuffle</button>
+                <button className="pill ghost icon-only" aria-label="More options" aria-haspopup="menu" onClick={() => openCardMenu(card)}><Icon name="more" size={16} /></button>
               </div>
             </div>
           </div>

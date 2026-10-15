@@ -7,6 +7,7 @@ import { getLyrics, lyricsDebug, type LyricLine, type Lyrics } from '../../lib/l
 import { getLiked, toggleLiked } from '../../lib/history';
 import { fmt, send, useLivePosition } from '../hooks';
 import { Icon } from './Icon';
+import { openSongMenu } from './Actions';
 
 type Pane = 'none' | 'lyrics' | 'queue';
 
@@ -151,7 +152,15 @@ export function NowPlaying({ s, settings, onArtist }: { s: PlayerState; settings
   const [pane, setPane] = useState<Pane>('none');
   const [liked, setLiked] = useState(false);
   const t = s.track;
-  useEffect(() => { if (t) getLiked().then((l) => setLiked(l.some((x) => x.videoId === t.videoId))); }, [t?.videoId]);
+  useEffect(() => {
+    if (!t) return;
+    const read = () => getLiked().then((l) => setLiked(l.some((x) => x.videoId === t.videoId)));
+    read();
+    // Favorite from the ⋯ menu or a song row updates the star here too.
+    const fn = (c: Record<string, chrome.storage.StorageChange>) => { if (c.liked) read(); };
+    chrome.storage.onChanged.addListener(fn);
+    return () => chrome.storage.onChanged.removeListener(fn);
+  }, [t?.videoId]);
 
   if (!t) {
     return (
@@ -174,8 +183,11 @@ export function NowPlaying({ s, settings, onArtist }: { s: PlayerState; settings
           <div className="np-title" title={t.title}>{t.title}</div>
           <div className="np-artist link" onClick={() => onArtist(t.artists, t.artistId)}>{t.artists}</div>
         </div>
-        <button className={`icon-btn ${liked ? 'on' : ''}`} title="Like" onClick={() => toggleLiked(t).then(setLiked)}>
-          <Icon name={liked ? 'heart' : 'heart-o'} />
+        <button className={`np-round ${liked ? 'on' : ''}`} title={liked ? 'Undo Favorite' : 'Favorite'} aria-label={liked ? 'Undo Favorite' : 'Favorite'} aria-pressed={liked} onClick={() => toggleLiked(t).then(setLiked)}>
+          <Icon name={liked ? 'star' : 'star-o'} size={18} />
+        </button>
+        <button className="np-round" title="More" aria-label="More options" aria-haspopup="menu" onClick={() => openSongMenu(t, { nowPlaying: true })}>
+          <Icon name="more-v" size={18} />
         </button>
       </div>
       <Seek s={s} />

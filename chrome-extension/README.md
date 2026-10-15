@@ -187,6 +187,16 @@ Accessibility
 Speed
 - Rows and cards are memoised and the app's callbacks are stable, so player ticks no longer re-render every list. Long playlists render 100 songs at a time. Lyrics tick at frame rate only for the line being sung. Cache writes no longer read all of storage. The user's own YouTube Music tabs no longer message BitChord every second.
 
+## v0.10.0 (15 Oct 2026): Apple Music menus and Library
+
+- Now Playing: a star (Favorite) and a ⋯ button beside the title, like Apple Music. The ⋯ sheet lists: Add to Library, Add to a Playlist…, Share Song, Share Lyrics…, Share Station, View Credits, Create Station, Sleep Timer, Favorite, Suggest Less.
+- Every song row has a ⋯ button and a right-click or long-press menu: Add to or Remove from Library, Add to a Playlist…, Play Next, Play Last, Share Song, View Credits, Create Station, Go to Artist, Favorite, Suggest Less, and Remove from Playlist inside your own playlists.
+- Albums and playlists (cards, Library tiles, collection pages) have menus too: Add to or Remove from Library, Play, Shuffle, Play Next, Play Last, Add to a Playlist…, Share, Go to. Your own playlists also offer Rename and Delete from Library.
+- Library is laid out like Apple Music: Playlists, Albums, Songs, Favorite Songs, Recently Played, Made For You and Transfer Music, with an Edit button to hide rows, plus Recently Added. Your library and playlists are stored locally and work signed out. Adding to YouTube Music playlists works when you're signed in.
+- Share Lyrics: pick up to 6 lines, then copy the text, copy an image, or save a 1080×1350 lyric card.
+- Suggest Less skips the song and keeps it out of radio and autoplay. Create Station keeps the current song playing and replaces Up Next.
+- Confirmation HUDs work like Apple Music's. The sheets support arrow keys and Esc.
+
 ## v0.9.3 (15 Oct 2026): ads and the YouTube player
 
 - Ads can only appear in the last-resort YouTube player (JioSaavn and YouTube direct streams are plain audio with no ads). BitChord does not block or skip YouTube's ads, since that breaks YouTube's terms.

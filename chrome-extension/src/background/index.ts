@@ -422,7 +422,9 @@ async function advance(dir: 1 | -1, auto = false, fade = 0) {
       try {
         const have = new Set(state.queue.map((x) => x.videoId));
         const seed = ytOf(state.track) ?? (await matchYouTube(state.track));
-        const more = seed ? (await getQueue({ videoId: seed })).filter((x) => !have.has(x.videoId)) : [];
+        // Songs you asked to hear less of stay out of autoplay.
+        const less = new Set(((await chrome.storage.local.get('suggestLess')).suggestLess as string[]) ?? []);
+        const more = seed ? (await getQueue({ videoId: seed })).filter((x) => !have.has(x.videoId) && !less.has(x.videoId)) : [];
         if (more.length) { state.queue.push(...more.slice(0, 25)); state.index = i; return playCurrent(); }
       } catch { /* fall through */ }
     }
@@ -597,7 +599,7 @@ function validCommand(cmd: UiCommand): boolean {
     case 'play-index': case 'remove-index': case 'play-next-index': return idx(cmd.index);
     case 'move': return idx(cmd.from) && idx(cmd.to);
     case 'add-next': case 'add-queue': return isTrack(cmd.track);
-    case 'append': return Array.isArray(cmd.tracks) && cmd.tracks.every(isTrack);
+    case 'append': case 'add-next-many': return Array.isArray(cmd.tracks) && cmd.tracks.length <= 5000 && cmd.tracks.every(isTrack);
     case 'seek': return Number.isFinite(cmd.seconds) && cmd.seconds >= 0;
     case 'volume': return Number.isFinite(cmd.value) && cmd.value >= 0 && cmd.value <= 100;
     case 'sleep': return Number.isFinite(cmd.minutes) && cmd.minutes >= -1 && cmd.minutes <= 24 * 60;
@@ -643,6 +645,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // Player commands only come from BitChord's own pages, and must be well-formed.
     if (!fromExtensionPage(sender) || !cmd?.type) { sendResponse(null); return; }
     if (!validCommand(cmd)) { log('bad command', cmd.type); sendResponse(state); return; }
+    // A choice the user made starts a fresh run of "ad-free only" skips.
+    if (cmd.type === 'play-queue' || cmd.type === 'play-index' || cmd.type === 'next' || cmd.type === 'prev') adFreeSkips = 0;
     switch (cmd.type) {
       case 'get-state': sendResponse(state); return;
       case 'play-queue':
@@ -652,6 +656,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case 'play-index': state.index = cmd.index; await playCurrent(); break;
       case 'add-next': state.queue.splice(state.index + 1, 0, cmd.track); if (state.index < 0) { state.index = 0; await playCurrent(); } break;
       case 'add-queue': state.queue.push(cmd.track); if (state.index < 0) { state.index = 0; await playCurrent(); } break;
+      case 'add-next-many':
+        if (!cmd.tracks.length) break;
+        state.queue.splice(state.index + 1, 0, ...cmd.tracks);
+        if (state.index < 0) { state.index = 0; await playCurrent(); }
+        break;
       case 'append': {
         const have = new Set(state.queue.map((x) => x.videoId));
         state.queue.push(...cmd.tracks.filter((x) => !have.has(x.videoId)));

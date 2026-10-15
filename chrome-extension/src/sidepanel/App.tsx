@@ -7,6 +7,7 @@ import { ArtistView, CollectionView, ExplorePage, LibraryPage, ListenNow, MoodVi
 import { MiniBar, NowPlaying } from './components/NowPlaying';
 import { SettingsPage } from './components/Settings';
 import { Arcs } from './components/Logo';
+import { ActionHost } from './components/Actions';
 
 export type Tab = 'listen' | 'explore' | 'library' | 'search';
 const TABS: { id: Tab; label: string; icon: string }[] = [
@@ -110,7 +111,7 @@ export default function App() {
               <ArtistView key={overlay.id ?? overlay.name} name={overlay.name} id={overlay.id} ctx={ctx} onBack={back} />
             ) : (
               <>
-                <h1 className="big-title">{titles[tab]}</h1>
+                {tab !== 'library' && <h1 className="big-title">{titles[tab]}</h1>}
                 {tab === 'listen' && <ListenNow ctx={ctx} me={me} signedIn={signedIn || session === null} session={session ?? ''} onSignIn={() => setSettingsOpen(true)} onMood={onMood} goExplore={() => go('explore')} />}
                 {tab === 'explore' && <ExplorePage ctx={ctx} onMood={onMood} />}
                 {tab === 'library' && <LibraryPage ctx={ctx} me={me} signedIn={signedIn} session={session ?? ''} onSignIn={() => setSettingsOpen(true)} onTransfer={() => setSettingsOpen('transfer')} />}
@@ -138,6 +139,7 @@ export default function App() {
         </nav>
       </div>
 
+      <ActionHost player={player} signedIn={signedIn} onArtist={(n, id) => { setExpanded(false); onArtist(n, id); }} onOpen={(c) => { setExpanded(false); onOpen(c); }} />
       {settingsOpen && <SettingsPage me={me} initial={settingsOpen === 'transfer' ? 'transfer' : undefined} onClose={() => { setSettingsOpen(false); account.retry(); }} />}
     </div>
   );

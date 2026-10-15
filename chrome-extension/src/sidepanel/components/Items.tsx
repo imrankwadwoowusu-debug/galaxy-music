@@ -1,8 +1,10 @@
 import { memo, useState } from 'react';
 import type { Card, Track } from '../../lib/types';
 import { getCardTracks, getQueue } from '../../lib/innertube';
+import { getSuggestLess } from '../../lib/library';
 import { send } from '../hooks';
 import { Icon } from './Icon';
+import { openCardMenu, openSongMenu, useContextMenu } from './Actions';
 
 // Play a single song: start it now, then fill the queue with its radio.
 // Every new queue bumps this, so a slow radio for an older song is dropped.
@@ -20,14 +22,18 @@ export async function playSongWithRadio(t: Track) {
     await started;
     const radio = await radioP;
     if (seq !== queueSeq) return; // the user started something else meanwhile
-    const rest = radio.filter((x) => x.videoId !== t.videoId);
+    const less = new Set(await getSuggestLess());
+    const rest = radio.filter((x) => x.videoId !== t.videoId && !less.has(x.videoId));
     await send({ type: 'append', tracks: rest.slice(0, 40) });
   } catch { /* radio is a bonus */ }
 }
 
-export const TrackRow = memo(function TrackRow({ t, list, i, activeId, onArtist, meta, rank }: {
+export const TrackRow = memo(function TrackRow({ t, list, i, activeId, onArtist, meta, rank, playlistId }: {
   t: Track; list?: Track[]; i?: number; activeId?: string | null; onArtist?: (name: string, id?: string) => void; meta?: string; rank?: number;
+  /** set inside one of your playlists: the menu offers Remove from Playlist */
+  playlistId?: string;
 }) {
+  const menu = useContextMenu(() => openSongMenu(t, { playlistId }));
   const active = activeId === t.videoId;
   // One activation per gesture: the second click of a double-click is ignored.
   const play = (e?: React.MouseEvent) => {
@@ -35,7 +41,7 @@ export const TrackRow = memo(function TrackRow({ t, list, i, activeId, onArtist,
     return list && i != null ? playQueue(list, i) : playSongWithRadio(t);
   };
   return (
-    <div className={`track ${active ? 'active' : ''}`}>
+    <div className={`track ${active ? 'active' : ''}`} {...menu}>
       {rank != null && <span className="track-rank">{rank}</span>}
       <button className="track-art" onClick={play} aria-label={`Play ${t.title}`}>
         <img src={t.thumbnail} alt="" loading="lazy" />
@@ -53,15 +59,15 @@ export const TrackRow = memo(function TrackRow({ t, list, i, activeId, onArtist,
       </div>
       {t.duration && <span className="track-dur">{t.duration}</span>}
       <div className="track-actions" onClick={(e) => e.stopPropagation()}>
-        <button className="icon-btn" title="Play next" onClick={() => send({ type: 'add-next', track: t })}><Icon name="next-up" /></button>
-        <button className="icon-btn" title="Add to queue" onClick={() => send({ type: 'add-queue', track: t })}><Icon name="queue-add" /></button>
+        <button className="icon-btn more-btn" title="More" aria-label={`More options for ${t.title}`} aria-haspopup="menu" onClick={() => openSongMenu(t, { playlistId })}><Icon name="more" /></button>
       </div>
     </div>
   );
 });
 
-export const CardTile = memo(function CardTile({ c, onArtist, onOpen }: { c: Card; onArtist?: (name: string, id?: string) => void; onOpen?: (c: Card) => void }) {
+export const CardTile = memo(function CardTile({ c, onArtist, onOpen, more }: { c: Card; onArtist?: (name: string, id?: string) => void; onOpen?: (c: Card) => void; more?: boolean }) {
   const [busy, setBusy] = useState(false);
+  const menu = useContextMenu(() => openCardMenu(c));
   const wide = c.kind === 'video';
   const play = async () => {
     setBusy(true);
@@ -77,7 +83,7 @@ export const CardTile = memo(function CardTile({ c, onArtist, onOpen }: { c: Car
   };
   return (
     // The play control is a sibling of the open button (no button inside a button).
-    <div className={`card ${wide ? 'wide' : ''} ${c.kind === 'artist' ? 'round' : ''}`} title={c.title}>
+    <div className={`card ${wide ? 'wide' : ''} ${c.kind === 'artist' ? 'round' : ''} ${more ? 'has-more' : ''}`} title={c.title} {...menu}>
       <button type="button" className="card-hit" onClick={open} aria-label={c.title}>
         <div className="card-art"><img src={c.thumbnail} alt="" loading="lazy" /></div>
         <div className="card-title">{c.title}</div>
@@ -88,6 +94,7 @@ export const CardTile = memo(function CardTile({ c, onArtist, onOpen }: { c: Car
           {busy ? <span className="spinner" /> : <Icon name="play" />}
         </button>
       )}
+      {more && <button type="button" className="card-more" aria-label={`More options for ${c.title}`} aria-haspopup="menu" onClick={(e) => { e.stopPropagation(); openCardMenu(c); }}><Icon name="more" size={18} /></button>}
     </div>
   );
 });

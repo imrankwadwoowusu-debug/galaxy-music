@@ -572,6 +572,15 @@ export async function createPlaylist(title: string, description: string, videoId
   }
   return id;
 }
+/** Adds songs to one of your YouTube Music playlists (playlist id with or without "VL"). */
+export async function addToYouTubePlaylist(playlistId: string, videoIds: string[]): Promise<void> {
+  await signedOnly();
+  const id = playlistId.replace(/^VL/, '');
+  for (let i = 0; i < videoIds.length; i += 100) {
+    const d = await call('browse/edit_playlist', { playlistId: id, actions: videoIds.slice(i, i + 100).map((v) => ({ action: 'ACTION_ADD_VIDEO', addedVideoId: v, dedupeOption: 'DEDUPE_OPTION_SKIP' })) });
+    if (d?.status && d.status !== 'STATUS_SUCCEEDED') throw new Error('YouTube Music didn’t accept that change (only your own playlists can be edited)');
+  }
+}
 export async function likeOnYouTubeMusic(videoId: string): Promise<void> {
   await signedOnly();
   await call('like/like', { target: { videoId } });
