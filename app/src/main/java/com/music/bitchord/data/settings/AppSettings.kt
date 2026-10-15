@@ -578,13 +578,12 @@ object AppSettings {
     // ── Debrid ────────────────────────────────────────────────────────────
 
     /**
-     * Cached torrents through the listener's own debrid account (TorBox
-     * today, more providers later). The key is mirrored out of [AuthStore]
+     * Cached torrents through the listener's own debrid account. The key is mirrored out of [AuthStore]
      * so it stays encrypted at rest and out of backup exports — see
      * [exportPrefs]. Empty means unconfigured, and the source reads as
      * missing rather than broken.
      */
-    val torboxApiKey = MutableStateFlow("")
+    val debridApiKey = MutableStateFlow("")
 
     // ── SMB ───────────────────────────────────────────────────────────────
 
@@ -903,7 +902,7 @@ object AppSettings {
         webdavUrl.value = prefs.getString(KEY_WEBDAV_URL, "").orEmpty()
         webdavUsername.value = prefs.getString(KEY_WEBDAV_USERNAME, "").orEmpty()
         webdavPassword.value = authStore.webdavPassword.orEmpty()
-        torboxApiKey.value = authStore.torboxApiKey.orEmpty()
+        debridApiKey.value = authStore.debridApiKey.orEmpty()
         smbHost.value = prefs.getString(KEY_SMB_HOST, "").orEmpty()
         smbShare.value = prefs.getString(KEY_SMB_SHARE, "").orEmpty()
         smbBasePath.value = prefs.getString(KEY_SMB_BASE_PATH, "").orEmpty()
@@ -1704,10 +1703,10 @@ object AppSettings {
     }
 
     /** Writes through to the encrypted store; pass "" to forget. */
-    fun setTorboxApiKey(value: String) {
+    fun setDebridApiKey(value: String) {
         val normalized = value.trim()
-        torboxApiKey.value = normalized
-        authStore.torboxApiKey = normalized.ifEmpty { null }
+        debridApiKey.value = normalized
+        authStore.debridApiKey = normalized.ifEmpty { null }
     }
 
     fun clearWebDav() {

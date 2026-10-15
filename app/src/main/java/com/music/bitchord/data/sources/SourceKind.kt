@@ -138,7 +138,7 @@ enum class SourceKind(
     ),
 
     /**
-     * Cached torrents through the listener's own debrid account — TorBox
+     * Cached torrents through the listener's own debrid account,
      * today, further providers behind the same row tomorrow.
      *
      * A catalogue is matched on the metadata service, then the debrid cache

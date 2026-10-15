@@ -115,12 +115,12 @@ class AuthStore(context: Context) {
         set(value) = prefs.edit().putString(KEY_SMB_PASSWORD, value).apply()
 
     /**
-     * The TorBox API key. Encrypted like every other credential here: it
+     * The debrid API key. Encrypted like every other credential here: it
      * spends the listener's debrid quota, so it never goes in plain prefs.
      */
-    var torboxApiKey: String?
-        get() = prefs.getString(KEY_TORBOX_API_KEY, null)
-        set(value) = prefs.edit().putString(KEY_TORBOX_API_KEY, value).apply()
+    var debridApiKey: String?
+        get() = prefs.getString(KEY_DEBRID_API_KEY, null)
+        set(value) = prefs.edit().putString(KEY_DEBRID_API_KEY, value).apply()
 
     /**
      * The channel the listener chose to act as, if they chose one.
@@ -231,6 +231,6 @@ class AuthStore(context: Context) {
         private const val KEY_DISCORD_TOKEN = "discord_token"
         private const val KEY_WEBDAV_PASSWORD = "webdav_password"
         private const val KEY_SMB_PASSWORD = "smb_password"
-        private const val KEY_TORBOX_API_KEY = "torbox_api_key"
+        private const val KEY_DEBRID_API_KEY = "debrid_api_key"
     }
 }

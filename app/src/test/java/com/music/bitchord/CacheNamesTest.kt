@@ -6,20 +6,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The deterministic-filename cache check, pinned to the documented example:
- * Monkeys Spinning Monkeys by Kevin MacLeod, Tidal track 359051850.
+ * The deterministic-filename cache check, pinned to a fixed example:
+ * Monkeys Spinning Monkeys by Kevin MacLeod, catalogue track 359051850.
  */
 class CacheNamesTest {
 
-    @Test fun `filenames match the documented convention exactly`() {
+    @Test fun `filenames match the seeder convention exactly`() {
         val names = CacheNames.candidates("Monkeys Spinning Monkeys", "Kevin MacLeod", 359051850)
             .map { it.name }
         assertEquals(
             listOf(
-                "Monkeys Spinning Monkeys - Kevin MacLeod [NullBeat 359051850 - Hi-Res].flac",
-                "Monkeys Spinning Monkeys - Kevin MacLeod [NullBeat 359051850 - HiFi CD].flac",
-                "Monkeys Spinning Monkeys - Kevin MacLeod [NullBeat 359051850 - 320kbps].m4a",
-                "Monkeys Spinning Monkeys - Kevin MacLeod [NullBeat 359051850 - 96kbps].m4a",
+                "Monkeys Spinning Monkeys - Kevin MacLeod [BitTor 359051850 - Hi-Res].flac",
+                "Monkeys Spinning Monkeys - Kevin MacLeod [BitTor 359051850 - HiFi CD].flac",
+                "Monkeys Spinning Monkeys - Kevin MacLeod [BitTor 359051850 - 320kbps].m4a",
+                "Monkeys Spinning Monkeys - Kevin MacLeod [BitTor 359051850 - 96kbps].m4a",
             ),
             names,
         )
@@ -29,7 +29,7 @@ class CacheNamesTest {
         // Fixed vector first, so a broken digest fails loudly instead of
         // merely disagreeing with itself below.
         assertEquals("900150983cd24fb0d6963f7d28e17f72", CacheNames.md5Hex("abc"))
-        val md5 = CacheNames.md5Hex("Monkeys Spinning Monkeys - Kevin MacLeod [NullBeat 359051850 - Hi-Res].flac")
+        val md5 = CacheNames.md5Hex("Monkeys Spinning Monkeys - Kevin MacLeod [BitTor 359051850 - Hi-Res].flac")
         assertTrue(md5.matches(Regex("[0-9a-f]{32}")))
     }
 
@@ -43,10 +43,10 @@ class CacheNamesTest {
         val wanted = CacheNames.candidates("Song", "Singer", 1L).associateBy { it.md5 }
         val byName = wanted.values.associate { it.name to it.md5 }
         val hits = mapOf(
-            byName["Song - Singer [NullBeat 1 - 320kbps].m4a"]!! to
-                "Song - Singer [NullBeat 1 - 320kbps].m4a",
+            byName["Song - Singer [BitTor 1 - 320kbps].m4a"]!! to
+                "Song - Singer [BitTor 1 - 320kbps].m4a",
             // Present by hash but holding another file: not this track.
-            byName["Song - Singer [NullBeat 1 - Hi-Res].flac"]!! to
+            byName["Song - Singer [BitTor 1 - Hi-Res].flac"]!! to
                 "Something else entirely.flac",
         )
         assertEquals(listOf(CacheNames.TIERS[2]), CacheNames.matchedTiers(wanted, hits))

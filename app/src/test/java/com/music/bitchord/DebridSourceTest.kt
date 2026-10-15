@@ -17,8 +17,8 @@ class DebridSourceTest {
     @Test fun `track ids round-trip metadata without separators`() {
         val id = DebridSource.encodeTrackId(359051850, "Monkeys Spinning Monkeys: Live?", "Kevin/MacLeod")
         assertTrue(":" !in id)
-        val (tidalId, title, artist) = DebridSource.parseTrackId(id)!!
-        assertEquals(359051850L, tidalId)
+        val (catalogId, title, artist) = DebridSource.parseTrackId(id)!!
+        assertEquals(359051850L, catalogId)
         assertEquals("Monkeys Spinning Monkeys: Live?", title)
         assertEquals("Kevin/MacLeod", artist)
     }

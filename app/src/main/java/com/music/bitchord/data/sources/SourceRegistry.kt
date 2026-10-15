@@ -36,7 +36,7 @@ data class SourceConfig(
     /** What the user called it. Blank falls back to the server's host, or the kind's own label. */
     val label: String = "",
     val baseUrl: String = "",
-    /** Debrid backend id (see [DebridProviders][com.music.bitchord.data.debrid.DebridProviders]); blank means TorBox. */
+    /** Debrid backend id (see [DebridProviders][com.music.bitchord.data.debrid.DebridProviders]); blank means the default backend. */
     val provider: String = "",
     /** JioSaavn and debrid sources are opt-in because catalogue matches can select the wrong recording. */
     val enabled: Boolean = kind != SourceKind.JIOSAAVN && kind != SourceKind.DEBRID,

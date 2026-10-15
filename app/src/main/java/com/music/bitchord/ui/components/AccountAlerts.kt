@@ -851,7 +851,7 @@ internal fun AlertScaffold(
 }
 
 /**
- * The debrid key editor: TorBox API key in, tested and stored encrypted.
+ * The debrid key editor: API key in, tested and stored encrypted.
  *
  * The same frosted card as every server editor, through the shared
  * [ServerEditorAlert] — one password field, Test above Save above Cancel,
@@ -870,7 +870,7 @@ fun DebridEditorAlert(
     onSaved: () -> Unit,
     scope: kotlinx.coroutines.CoroutineScope,
 ) {
-    var apiKey by remember { mutableStateOf(AppSettings.torboxApiKey.value) }
+    var apiKey by remember { mutableStateOf(AppSettings.debridApiKey.value) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var statusIsGood by remember { mutableStateOf(false) }
@@ -879,9 +879,9 @@ fun DebridEditorAlert(
     val rejected = stringResource(R.string.debrid_rejected)
 
     /**
-     * Checks the typed key against TorBox, then says so.
+     * Checks the typed key against the debrid cache, then says so.
      *
-     * Save runs the same check first: storing a key TorBox just refused
+     * Save runs the same check first: storing a key just refused
      * would leave a row whose toggle promises what the account cannot give.
      * A null answer covers rejection and outage alike — the row's own
      * health line already reports reachability per open, so a second
@@ -895,8 +895,8 @@ fun DebridEditorAlert(
             val key = apiKey.trim()
             val name = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching {
-                    if (!com.music.bitchord.data.debrid.TorBox.validateKey(key)) return@runCatching null
-                    com.music.bitchord.data.debrid.TorBox.accountName(key)
+                    if (!com.music.bitchord.data.debrid.DebridCache.validateKey(key)) return@runCatching null
+                    com.music.bitchord.data.debrid.DebridCache.accountName(key)
                 }.getOrNull()
             }
             if (name == null) {
@@ -910,7 +910,7 @@ fun DebridEditorAlert(
             busy = false
 
             if (thenSave) {
-                AppSettings.setTorboxApiKey(key)
+                AppSettings.setDebridApiKey(key)
                 com.music.bitchord.data.sources.SourceRegistry.setEnabled(config.id, true)
                 onSaved()
             }
@@ -937,8 +937,8 @@ fun DebridEditorAlert(
         onTest = { run(thenSave = false) },
         onSave = { run(thenSave = true) },
         removeLabel = stringResource(R.string.debrid_clear_key),
-        onRemove = if (AppSettings.torboxApiKey.value.isBlank()) null else ({
-            AppSettings.setTorboxApiKey("")
+        onRemove = if (AppSettings.debridApiKey.value.isBlank()) null else ({
+            AppSettings.setDebridApiKey("")
             com.music.bitchord.data.sources.SourceRegistry.setEnabled(config.id, false)
             onDismiss()
         }),

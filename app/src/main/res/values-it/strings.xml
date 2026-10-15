@@ -1174,13 +1174,13 @@
 
 
     <string name="debrid_editor_title">Debrid</string>
-    <string name="debrid_editor_subtitle">Bit-exact cached audio via TorBox</string>
-    <string name="debrid_api_key">TorBox API key</string>
-    <string name="debrid_api_key_required">TorBox API key required</string>
-    <string name="debrid_key_hint">Paste your TorBox API key</string>
-    <string name="debrid_key_note">Find it on your TorBox settings page. Stored encrypted on this device, never uploaded anywhere else.</string>
+    <string name="debrid_editor_subtitle">Bit-exact cached audio via your debrid account</string>
+    <string name="debrid_api_key">Debrid API key</string>
+    <string name="debrid_api_key_required">Debrid API key required</string>
+    <string name="debrid_key_hint">Paste your Debrid API key</string>
+    <string name="debrid_key_note">Find it on your debrid provider’s settings page. Stored encrypted on this device, never uploaded anywhere else.</string>
     <string name="debrid_connected">Connected</string>
-    <string name="debrid_rejected">TorBox rejected that key</string>
+    <string name="debrid_rejected">That key was rejected</string>
     <string name="debrid_clear_key">Clear key</string>
 
 

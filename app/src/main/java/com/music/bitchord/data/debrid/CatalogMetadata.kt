@@ -19,17 +19,14 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.util.Locale
 
 /**
- * Tidal catalogue metadata over the public v1 search — the same endpoint the
- * app's canvas lookup already uses, which needs no account.
+ * Catalogue metadata over a public search API which needs no account.
  *
  * Only metadata is read here, never audio: title, artists, duration and the
  * stable numeric track id. That id is what the deterministic file names are
- * built from, so a v1 id must name the same recording the filename
- * convention was seeded with — Tidal's track ids are stable across its API
- * versions, and the cache check itself (name equality) refuses anything that
- * drifted.
+ * built from, and the cache check itself (name equality) refuses anything
+ * that drifted.
  */
-object TidalCatalog {
+object CatalogMetadata {
 
     private const val TAG = "BitChord"
     private const val SEARCH = "https://api.tidal.com/v1/search"
@@ -41,7 +38,7 @@ object TidalCatalog {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
 
-    data class TidalTrack(
+    data class CatalogTrack(
         val id: Long,
         val title: String,
         val artists: List<String>,
@@ -69,7 +66,7 @@ object TidalCatalog {
         get() = Locale.getDefault().country.takeIf { it.length == 2 }?.uppercase(Locale.ROOT) ?: "US"
 
     /** Up to [limit] tracks for [query], relevance-ordered. Empty on any failure. */
-    suspend fun searchTracks(query: String, limit: Int = 5): List<TidalTrack> = runCatching {
+    suspend fun searchTracks(query: String, limit: Int = 5): List<CatalogTrack> = runCatching {
         val text = client.get(SEARCH) {
             parameter("query", query)
             parameter("limit", limit.coerceIn(1, 10))
@@ -90,7 +87,7 @@ object TidalCatalog {
                 .orEmpty()
             if (artists.isEmpty()) return@mapNotNull null
             val album = track["album"]?.jsonObject
-            TidalTrack(
+            CatalogTrack(
                 id = id,
                 title = title,
                 artists = artists,
@@ -101,7 +98,7 @@ object TidalCatalog {
             )
         }
     }.getOrElse {
-        TrackLog.w(TAG, "Tidal search error: ${it.message}")
+        TrackLog.w(TAG, "Catalogue search error: ${it.message}")
         emptyList()
     }
 

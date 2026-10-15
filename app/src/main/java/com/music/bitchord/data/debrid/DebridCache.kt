@@ -22,14 +22,14 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
 /**
- * TorBox torrent cache: which asked hashes are cached, and the download URL
+ * Debrid torrent cache: which asked hashes are cached, and the download URL
  * for one of them.
  *
  * Auth is a user-supplied API key on every call — nothing is minted, stored,
  * or refreshed here. All three methods run on IO and return null/false
  * rather than throwing; the source treats that as "not cached right now".
  */
-object TorBox {
+object DebridCache {
 
     private const val TAG = "BitChord"
     private const val BASE = "https://api.torbox.app"
@@ -70,10 +70,10 @@ object TorBox {
                 setBody(mapOf("hashes" to md5s))
             }.bodyAsText()
             val root = codec.parseToJsonElement(text).jsonObject
-            // TorBox answers success as boolean true; anything else names the
+            // The cache answers success as boolean true; anything else names the
             // problem in `detail`/`error` and means no usable answer.
             if (root["success"]?.jsonPrimitive?.content != "true") {
-                TrackLog.w(TAG, "TorBox checkcached refused: ${text.take(160)}")
+                TrackLog.w(TAG, "Debrid cache check refused: ${text.take(160)}")
                 return@runCatching emptyMap<String, CachedFile>()
             }
             val data = root["data"]?.jsonObject ?: return@runCatching emptyMap<String, CachedFile>()
@@ -87,7 +87,7 @@ object TorBox {
                 hash to CachedFile(id, name)
             }.toMap()
         }.getOrElse {
-            TrackLog.w(TAG, "TorBox checkcached error: ${it.message}")
+            TrackLog.w(TAG, "Debrid cache check error: ${it.message}")
             emptyMap()
         }
     }
@@ -108,7 +108,7 @@ object TorBox {
         val root = codec.parseToJsonElement(text).jsonObject
         root["data"]?.jsonPrimitive?.contentOrNull?.takeIf { it.startsWith("http") }
     }.getOrElse {
-        TrackLog.w(TAG, "TorBox requestdl error: ${it.message}")
+        TrackLog.w(TAG, "Debrid download-link error: ${it.message}")
         null
     }
 

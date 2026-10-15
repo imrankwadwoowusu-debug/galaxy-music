@@ -4,18 +4,17 @@ import java.util.Base64
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.debrid.DebridProviders
 import com.music.bitchord.data.debrid.CacheNames
-import com.music.bitchord.data.debrid.TidalCatalog
-import com.music.bitchord.data.debrid.TorBox
+import com.music.bitchord.data.debrid.CatalogMetadata
+import com.music.bitchord.data.debrid.DebridCache
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.settings.AppSettings
 
 private const val TAG = "BitChord"
 
 /**
- * Bit-exact audio from the listener's own debrid cache — TorBox today,
- * further providers behind [DebridProviders] tomorrow.
+ * Bit-exact audio from the listener's own debrid cache.
  *
- * The flow, per track: catalogue metadata (Tidal) names the recording and
+ * The flow, per track: catalogue metadata names the recording and
  * its stable id, deterministic file names are built per quality tier and
  * hashed, and the debrid cache is asked about all of them in one batched
  * call. A hit whose held name equals the asked name is the track; the
@@ -40,9 +39,9 @@ class DebridSource(
         }
 
     private val providerId: String
-        get() = config.provider.ifBlank { DebridProviders.TORBOX }
+        get() = config.provider.ifBlank { DebridProviders.DEFAULT }
 
-    private fun apiKey(): String = AppSettings.torboxApiKey.value.trim()
+    private fun apiKey(): String = AppSettings.debridApiKey.value.trim()
 
     override suspend fun health(): SourceHealth {
         if (!DebridProviders.isKnown(providerId)) {
@@ -51,7 +50,7 @@ class DebridSource(
         if (apiKey().isEmpty()) {
             return SourceHealth.Rejected("API key required")
         }
-        return runCatching { TorBox.validateKey(apiKey()) }
+        return runCatching { DebridCache.validateKey(apiKey()) }
             .fold(
                 onSuccess = { valid ->
                     if (valid) SourceHealth.Ok(DebridProviders.labelFor(providerId))
@@ -70,7 +69,7 @@ class DebridSource(
         val key = apiKey()
         if (key.isEmpty() || !DebridProviders.isKnown(providerId)) return emptyList()
         TrackLog.d(TAG, "▶ Debrid search \"$query\" limit=$limit")
-        val tracks = TidalCatalog.searchTracks(query, limit = MAX_TIDAL_CANDIDATES)
+        val tracks = CatalogMetadata.searchTracks(query, limit = MAX_CATALOG_CANDIDATES)
         if (tracks.isEmpty()) return emptyList()
         // Relevance-ordered; past the first rows that share no words with the
         // question, the catalogue is naming other songs with the same chorus.
@@ -84,7 +83,7 @@ class DebridSource(
             val artist = track.artists.firstOrNull().orEmpty()
             track.id to CacheNames.candidates(track.title, artist, track.id).associateBy { it.md5 }
         }
-        val hits = TorBox.checkCached(key, wantedByTrack.values.flatMap { it.keys })
+        val hits = DebridCache.checkCached(key, wantedByTrack.values.flatMap { it.keys })
             .mapValues { it.value.name }
         val songs = shortlisted.mapNotNull { track ->
             val tiers = CacheNames.matchedTiers(wantedByTrack.getValue(track.id), hits)
@@ -99,20 +98,20 @@ class DebridSource(
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? {
         val key = apiKey()
         if (key.isEmpty() || !DebridProviders.isKnown(providerId)) return null
-        val (tidalId, title, artist) = parseTrackId(trackId) ?: return null
-        TrackLog.d(TAG, "▶ Debrid stream tidalId=$tidalId request=$request")
-        val wanted = CacheNames.candidates(title, artist, tidalId).associateBy { it.md5 }
-        val refs = TorBox.checkCached(key, wanted.keys.toList())
+        val (catalogId, title, artist) = parseTrackId(trackId) ?: return null
+        TrackLog.d(TAG, "▶ Debrid stream catalogId=$catalogId request=$request")
+        val wanted = CacheNames.candidates(title, artist, catalogId).associateBy { it.md5 }
+        val refs = DebridCache.checkCached(key, wanted.keys.toList())
         val tier = CacheNames.matchedTiers(wanted, refs.mapValues { it.value.name })
             .firstOrNull { it in tierFor(request) }
             ?: run {
-                TrackLog.d(TAG, "  ✗ Debrid: no cached tier for tidalId=$tidalId at $request")
+                TrackLog.d(TAG, "  ✗ Debrid: no cached tier for catalogId=$catalogId at $request")
                 return null
             }
         val torrentId = refs.entries
             .firstOrNull { (md5, ref) -> wanted[md5]?.tier == tier && ref.name == wanted[md5]?.name }
             ?.value?.torrentId ?: return null
-        val url = TorBox.downloadUrl(key, torrentId) ?: return null
+        val url = DebridCache.downloadUrl(key, torrentId) ?: return null
         TrackLog.d(TAG, "  ✓ Debrid ${tier.label} torrent=$torrentId")
         return SourceStream(url = url, format = CacheNames.formatOf(tier))
     }
@@ -128,14 +127,14 @@ class DebridSource(
         else -> CacheNames.TIERS
     }
 
-    private fun songOf(track: TidalCatalog.TidalTrack): Song {
+    private fun songOf(track: CatalogMetadata.CatalogTrack): Song {
         val artist = track.artists.firstOrNull().orEmpty()
         return Song(
             videoId = SourceRegistry.trackKey(config.id, encodeTrackId(track.id, track.title, artist)),
             title = track.title,
             artist = artist.ifBlank { "Unknown Artist" },
             albumName = track.album,
-            thumbnailUrl = track.coverId?.let(TidalCatalog::coverUrl),
+            thumbnailUrl = track.coverId?.let(CatalogMetadata::coverUrl),
             durationText = track.durationSec?.let { seconds ->
                 String.format("%d:%02d", seconds / 60, seconds % 60)
             },
@@ -145,13 +144,13 @@ class DebridSource(
     }
 
     internal companion object {
-        /** Tidal rows read per query; only the first couple ever survive matching. */
-        const val MAX_TIDAL_CANDIDATES = 5
+        /** Catalogue rows read per query; only the first couple ever survive matching. */
+        const val MAX_CATALOG_CANDIDATES = 5
 
         /** Tracks taken to the cache check per query — one batched call. */
         const val MAX_TRACKS_PER_SEARCH = 2
 
-        /** Minimum query-word overlap before a Tidal row is worth hashing. */
+        /** Minimum query-word overlap before a catalogue row is worth hashing. */
         const val MIN_QUERY_OVERLAP = 0.5
 
         /**
@@ -159,8 +158,8 @@ class DebridSource(
          * and artist, newline-separated and base64url-encoded (no `:` so it
          * can never collide with [SourceRegistry]'s `::` track-key separator).
          */
-        internal fun encodeTrackId(tidalId: Long, title: String, artist: String): String {
-            val payload = "$tidalId\n$title\n$artist".toByteArray(Charsets.UTF_8)
+        internal fun encodeTrackId(catalogId: Long, title: String, artist: String): String {
+            val payload = "$catalogId\n$title\n$artist".toByteArray(Charsets.UTF_8)
             return "tb" + Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(payload)
         }

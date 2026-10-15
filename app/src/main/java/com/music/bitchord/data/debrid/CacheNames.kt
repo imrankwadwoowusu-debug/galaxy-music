@@ -14,7 +14,7 @@ import java.security.MessageDigest
  * {Quality Label}].{ext}`. The MD5 of that name is what the cache is asked
  * about, and a hit whose reported name equals the asked name is the track.
  *
- * The `NullBeat` tag inside [filename] is a byte-exact protocol constant,
+ * The `BitTor` tag inside [filename] is a byte-exact protocol constant,
  * not branding: seeders name their files with it, so any other tag hashes
  * differently and never hits. Everything else here is pure string and hash
  * work, so it stays unit-testable on the JVM with no Android or network in
@@ -53,9 +53,9 @@ object CacheNames {
     fun clean(value: String): String =
         value.replace(Regex("[/\\\\?%*:|\"<>]"), "").trim()
 
-    /** The exact file name a seeder uses for [tidalId] at [tier]. */
-    fun filename(title: String, artist: String, tidalId: Long, tier: Tier): String =
-        "${clean(title)} - ${clean(artist)} [NullBeat $tidalId - ${tier.label}].${tier.ext}"
+    /** The exact file name a seeder uses for [catalogId] at [tier]. */
+    fun filename(title: String, artist: String, catalogId: Long, tier: Tier): String =
+        "${clean(title)} - ${clean(artist)} [BitTor $catalogId - ${tier.label}].${tier.ext}"
 
     fun md5Hex(text: String): String =
         MessageDigest.getInstance("MD5")
@@ -63,9 +63,9 @@ object CacheNames {
             .joinToString("") { "%02x".format(it) }
 
     /** Every tier's candidate for one catalogue track. */
-    fun candidates(title: String, artist: String, tidalId: Long): List<Candidate> =
+    fun candidates(title: String, artist: String, catalogId: Long): List<Candidate> =
         TIERS.map { tier ->
-            val name = filename(title, artist, tidalId, tier)
+            val name = filename(title, artist, catalogId, tier)
             Candidate(tier, name, md5Hex(name))
         }
 
@@ -94,8 +94,8 @@ object CacheNames {
 
     /**
      * Whether [query]'s words show up in a `title artist` filing at all.
-     * A light pre-filter before spending a cache check: Tidal answers
-     * relevance-ordered, and anything past the first rows that shares no
+     * A light pre-filter before spending a cache check: catalogue answers
+     * are relevance-ordered, and anything past the first rows that shares no
      * words with the question is a different song with the same chorus.
      */
     fun queryOverlap(query: String, title: String, artist: String): Double {

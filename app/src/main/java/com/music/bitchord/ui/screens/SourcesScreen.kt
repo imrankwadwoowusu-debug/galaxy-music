@@ -138,7 +138,7 @@ fun SourcesScreen(
     val smbShare by AppSettings.smbShare.collectAsStateWithLifecycle()
     val smbUsername by AppSettings.smbUsername.collectAsStateWithLifecycle()
     val smbPassword by AppSettings.smbPassword.collectAsStateWithLifecycle()
-    val torboxApiKey by AppSettings.torboxApiKey.collectAsStateWithLifecycle()
+    val debridApiKey by AppSettings.debridApiKey.collectAsStateWithLifecycle()
 
     /** Last known reachability per source, filled in as the probes come back. */
     val health = remember { mutableStateMapOf<String, SourceHealth>() }
@@ -151,7 +151,7 @@ fun SourcesScreen(
     // contacted at all until one is connected, and connecting one re-runs this.
     // A debrid row gets its key validated live, for the same reason.
     val probeKey = configs.filter { it.kind.needsServer || it.kind == SourceKind.DEBRID }
-        .joinToString { "${it.id}@${it.baseUrl}@${it.checkValidLossless}@$torboxApiKey" } + "@${losslessOutput.capable}"
+        .joinToString { "${it.id}@${it.baseUrl}@${it.checkValidLossless}@$debridApiKey" } + "@${losslessOutput.capable}"
     LaunchedEffect(probeKey) {
         configs.filter { it.kind.needsServer && it.isComplete && !it.awaitsLosslessOutput }.forEach { config ->
             val source = SourceRegistry.instance(config.id) ?: return@forEach
@@ -915,7 +915,7 @@ private fun AudioQuality.localizedLabel(): String = stringResource(
 private fun SourceConfig.statusLine(health: SourceHealth?): String = when {
     !isComplete -> stringResource(R.string.source_setup_required)
     kind == SourceKind.JIOSAAVN -> stringResource(R.string.jiosaavn_mismatch_warning)
-    kind == SourceKind.DEBRID && AppSettings.torboxApiKey.value.isBlank() ->
+    kind == SourceKind.DEBRID && AppSettings.debridApiKey.value.isBlank() ->
         stringResource(R.string.debrid_api_key_required)
     health is SourceHealth.Ok -> listOfNotNull(
         health.detail,
