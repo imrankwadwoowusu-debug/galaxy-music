@@ -1245,4 +1245,60 @@
     <string name="spotify_library_subtitle">Spotify çalma listeleriniz</string>
     <string name="spotify_sign_in">Spotify ile oturum aç</string>
     <string name="spotify_track_unavailable">O şarkı YouTube Music’de bulunamadı</string>
+    <string name="chinese_simplified">Çince (Basitleştirilmiş)</string>
+    <string name="chinese_traditional">Çince (Geleneksel)</string>
+<string name="legal_footer">Unofficial client · Not affiliated with YouTube or Google</string>
+    
+<string name="sign_in_compliance_footer">Sign-in uses your own account in Google’s official web page. BitChord never sees your password. Third-party clients may be subject to YouTube’s Terms of Service and your local copyright laws — use at your own discretion.</string>
+
+    
+<string name="service_file">Service file</string>
+    
+<string name="service_file_subtitle">Endpoints and client identities for the streaming service</string>
+    
+<string name="service_file_ready">Installed · %1$s · %2$d clients</string>
+    
+<string name="service_file_missing_subtitle">Not installed — streaming, search and sign-in need it</string>
+    
+<string name="service_file_import">Import service file</string>
+    
+<string name="service_file_test">Test connection</string>
+    
+<string name="service_file_testing">Testing…</string>
+    
+<string name="service_file_test_ok">Reachable (%1$d)</string>
+    
+<string name="service_file_test_failed">Unreachable: %1$s</string>
+    
+<string name="service_file_clear">Remove service file</string>
+    
+<string name="service_file_clear_title">Remove the service file?</string>
+    
+<string name="service_file_clear_warning">Streaming, search, sign-in and link sharing stop working until another file is imported. Downloads and local files are unaffected.</string>
+    
+<string name="service_file_cleared">Service file removed</string>
+    
+<string name="service_file_imported">Installed · %1$s</string>
+    
+<string name="service_file_import_failed">Import failed: %1$s</string>
+    
+<string name="service_file_imported_tested">Installed · %1$s · Reachable (%2$d)</string>
+    
+<string name="service_file_imported_unreachable">Installed · %1$s · Unreachable: %2$s</string>
+    
+<string name="service_file_required_title">Service file required</string>
+    
+<string name="service_file_required_text">This needs the service’s endpoints and client identities, which ship separately and are never downloaded automatically. Import the file to continue.</string>
+    
+<string name="service_file_open_settings">Open Settings</string>
+    
+<string name="service_file_import_link">Import from link</string>
+    
+<string name="service_file_url_title">Service file link</string>
+    
+<string name="service_file_url_hint">https://…/bitchord-service.json</string>
+    
+<string name="service_file_downloading">Downloading…</string>
+
+    
 </resources>
