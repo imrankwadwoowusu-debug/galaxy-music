@@ -14,12 +14,25 @@ private const val TAG = "BitChord"
 /**
  * Bit-exact audio from the listener's own debrid cache.
  *
- * The flow, per track: catalogue metadata names the recording and
- * its stable id, deterministic file names are built per quality tier and
- * hashed, and the debrid cache is asked about all of them in one batched
- * call. A hit whose held name equals the asked name is the track; the
- * download URL itself is resolved at play time, since those links expire
- * and a URL minted during search is a 403 waiting to happen.
+ * ## How to use (listeners)
+ *
+ * 1. Get an API key from your debrid provider's settings page.
+ * 2. Open Settings → Sources → the Debrid row, paste the key, hit Test
+ *    (it validates the key live), then Save — saving also switches the
+ *    source on.
+ * 3. Play anything. The source is asked in rank order alongside the rest;
+ *    on the Lossless rung it answers first with bit-exact FLAC when the
+ *    track is cached, and playback silently falls through to the next
+ *    source when it isn't. Nothing is needed per track.
+ *
+ * ## How streaming works (pipeline, per track)
+ *
+ * Catalogue metadata names the recording and its stable id, deterministic
+ * file names are built per quality tier and hashed, and the debrid cache
+ * is asked about all of them in one batched call. A hit whose held name
+ * equals the asked name is the track; the download URL itself is resolved
+ * at play time, since those links expire and a URL minted during search is
+ * a 403 waiting to happen.
  *
  * The track id carries everything [stream] needs (catalogue id, title,
  * artist), so a queue restored after a restart resolves without anything
