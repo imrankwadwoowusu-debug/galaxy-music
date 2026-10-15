@@ -187,6 +187,10 @@ Accessibility
 Speed
 - Rows and cards are memoised and the app's callbacks are stable, so player ticks no longer re-render every list. Long playlists render 100 songs at a time. Lyrics tick at frame rate only for the line being sung. Cache writes no longer read all of storage. The user's own YouTube Music tabs no longer message BitChord every second.
 
+## v0.9.2 (15 Oct 2026): sleep timer
+
+- The sleep timer (moon) button moved from the left of the Now Playing bottom row to the right, beside Up Next. Its menu used to open off the left edge of the screen, hiding most of the options; it now opens fully on screen at every width.
+
 ## v0.9.1 (14 Oct 2026): audit of v0.9
 
 - Play after a long pause works again: Chrome closes an idle audio page after ~30 s of silence, so Play now reloads the song where it was. The load token and position survive the service worker sleeping, so events from a surviving player are no longer dropped.

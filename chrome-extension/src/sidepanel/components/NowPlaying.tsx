@@ -188,7 +188,6 @@ export function NowPlaying({ s, settings, onArtist }: { s: PlayerState; settings
       <div className="np-bottom">
         <span className="np-side">
           <button className={`icon-btn ${pane === 'lyrics' ? 'on' : ''}`} title="Lyrics" onClick={() => setPane(pane === 'lyrics' ? 'none' : 'lyrics')}><Icon name="lyrics" /></button>
-          <SleepButton s={s} />
         </span>
         {settings.hideVolume ? <span className="vol" /> : (
           <label className="vol"><Icon name="volume" size={18} />
@@ -197,6 +196,7 @@ export function NowPlaying({ s, settings, onArtist }: { s: PlayerState; settings
         )}
         <span className="np-side">
           <button className={`icon-btn ${pane === 'queue' ? 'on' : ''}`} title="Up Next" aria-label="Up Next" onClick={() => setPane(pane === 'queue' ? 'none' : 'queue')}><Icon name="queue" /></button>
+          <SleepButton s={s} />
         </span>
       </div>
     </div>
