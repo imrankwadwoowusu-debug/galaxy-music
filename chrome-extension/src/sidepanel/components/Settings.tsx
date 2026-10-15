@@ -264,8 +264,8 @@ function SourcesPage({ onBack }: { onBack: () => void }) {
           <div className="s-row-main">
             <span className="src-num">{s.sources.length + 1}</span>
             <span className="s-icon"><Icon name="play" size={20} /></span>
-            <span className="s-text"><span className="s-title">YouTube player</span><span className="s-sub">Last resort · plays inside BitChord, never in a separate tab</span></span>
-            <span className="s-value">Always on</span>
+            <span className="s-text"><span className="s-title">YouTube player</span><span className="s-sub">Last resort · plays inside BitChord, never in a tab. YouTube may show its ads here (none with YouTube Premium)</span></span>
+            <Toggle on={!s.adFreeOnly} onChange={(v) => save({ adFreeOnly: !v })} label="YouTube player" />
           </div>
         </div>
       </Group>
@@ -361,7 +361,7 @@ export function SettingsPage({ me, onClose, initial }: { me: AccountInfo | null;
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   };
   const quality = { high: 'High', normal: 'Normal', low: 'Data saver' } as const;
-  const srcSummary = [...s.sources.filter((x) => x === 'youtube' || s.jiosaavn).map((x) => (x === 'jiosaavn' ? 'JioSaavn' : 'YouTube Music')), 'YouTube player'].join(' → ');
+  const srcSummary = [...s.sources.filter((x) => x === 'youtube' || s.jiosaavn).map((x) => (x === 'jiosaavn' ? 'JioSaavn' : 'YouTube Music')), ...(s.adFreeOnly ? [] : ['YouTube player'])].join(' → ');
 
   return (
     <div className="settings-layer">

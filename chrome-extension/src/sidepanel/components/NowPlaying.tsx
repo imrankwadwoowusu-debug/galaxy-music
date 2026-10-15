@@ -179,7 +179,7 @@ export function NowPlaying({ s, settings, onArtist }: { s: PlayerState; settings
         </button>
       </div>
       <Seek s={s} />
-      {(s.resolving || s.error || settings.showStats) && (
+      {(s.resolving || s.error || settings.showStats || s.stream?.includes('· ad playing')) && (
         <div className="nerd" title="Stats for nerds">
           {s.resolving ? <><span className="spinner sm" /> Finding the best stream…</> : s.error ? s.error : s.stream ?? ''}
         </div>

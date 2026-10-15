@@ -75,6 +75,8 @@ export interface Settings {
   jiosaavn: boolean; // enabled
   /** @deprecated v0.9: the YouTube Music tab is gone (embedded player instead) */
   tabFallback: boolean;
+  /** Never fall back to the YouTube player (the one source that can show YouTube's ads): skip the song instead. */
+  adFreeOnly: boolean;
   tabDataSaver: boolean; // helper tab: smallest video, Song mode, no images
   quality: Quality;
   // Accounts
@@ -111,7 +113,7 @@ export interface Settings {
   sourceOrder?: SourceOrder;
 }
 export const DEFAULT_SETTINGS: Settings = {
-  sources: ['jiosaavn', 'youtube'], jiosaavn: true, tabFallback: true, tabDataSaver: true, quality: 'high',
+  sources: ['jiosaavn', 'youtube'], jiosaavn: true, tabFallback: true, adFreeOnly: false, tabDataSaver: true, quality: 'high',
   useAccount: true, defaultAccount: 'youtube-music', authUser: 0, listenbrainzToken: '',
   autoRadio: true, hideVolume: false, crossfade: 0,
   eqOn: false, eqPreset: 'Flat', eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],

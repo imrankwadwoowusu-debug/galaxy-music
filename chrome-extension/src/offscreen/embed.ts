@@ -49,7 +49,7 @@ function position() {
 }
 function report(kind: string, extra: Record<string, unknown> = {}) {
   if (token === -1) return;
-  emitFn(kind, { token, position: Math.min(position(), st.duration || Infinity), duration: st.duration, playing: st.state === PLAYING, embed: true, ...extra });
+  emitFn(kind, { token, position: Math.min(position(), st.duration || Infinity), duration: st.duration, playing: st.state === PLAYING, embed: true, ad: inAd, ...extra });
 }
 
 window.addEventListener('message', (e) => {

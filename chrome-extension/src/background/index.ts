@@ -154,6 +154,8 @@ async function audio(cmd: Record<string, unknown>) {
 // When no direct stream works, the song plays in a hidden YouTube player that
 // lives in BitChord's own offscreen page: same controls, same queue, no tab.
 let embedTried = new Set<string>();
+let embedAd = false;
+let adFreeSkips = 0; // songs skipped in a row by "ad-free only"
 let onEmbed = false; // the current song plays in the YouTube player (no crossfade there)
 /** Another upload of the same recording (Topic channel, lyric video) when one refuses to embed. */
 async function alternateYouTube(t: Track): Promise<string | undefined> {
@@ -173,7 +175,7 @@ async function playEmbed(t: Track, token: number, startAt = 0): Promise<boolean>
   if (!id) return false;
   embedTried.add(id);
   log('embed', t.title, id);
-  onEmbed = true;
+  onEmbed = true; embedAd = false;
   state.engine = 'direct';
   state.stream = 'YouTube player · in BitChord';
   state.resolving = false;
@@ -329,6 +331,18 @@ async function startDirect(t: Track, token: number, startAt = 0): Promise<void> 
   }
   if (token !== loadToken) return; // user moved on
   const fade = pendingFade; pendingFade = 0;
+  if (!r && cfg.adFreeOnly) {
+    // "Ad-free sources only": never hand the song to the YouTube player. Skip it.
+    await audio({ cmd: 'stop' });
+    state.engine = null; state.playing = false; state.resolving = false;
+    state.error = 'No ad-free source for this song · skipped';
+    log('ad-free only: skip', t.title);
+    persist(); broadcast();
+    // Move on, but never spin through a queue where nothing has an ad-free source.
+    if (++adFreeSkips < state.queue.length && (state.index + 1 < state.queue.length || state.repeat === 'all'))
+      setTimeout(() => { if (token === loadToken) advance(1, true); }, 1500);
+    return;
+  }
   if (!r) {
     // Every direct stream failed: play it in the YouTube player inside BitChord.
     const ok = await playEmbed(t, token, startAt);
@@ -527,9 +541,14 @@ function onAudioEvent(m: any) {
   if (m.kind === 'media-prev') return void previous();
   state.position = m.position;
   if (m.duration) state.duration = m.duration;
+  // The YouTube player says when one of YouTube's ads is on: say so instead of a frozen bar.
+  if (onEmbed && typeof m.ad === 'boolean' && m.ad !== embedAd) {
+    embedAd = m.ad;
+    state.stream = m.ad ? 'YouTube player · ad playing, your song is next' : 'YouTube player · in BitChord';
+  }
   if (Date.now() - posSavedAt > 3000) { posSavedAt = Date.now(); chrome.storage.session.set({ position: state.position, duration: state.duration, loadToken }); }
   state.playing = m.playing;
-  if (m.kind === 'playing') { startedToken = m.token; if (startTimer) { clearTimeout(startTimer); startTimer = null; } }
+  if (m.kind === 'playing') { startedToken = m.token; adFreeSkips = 0; if (startTimer) { clearTimeout(startTimer); startTimer = null; } }
   maybeScrobble();
   onTick();
   if (m.kind === 'ended') {

@@ -187,6 +187,13 @@ Accessibility
 Speed
 - Rows and cards are memoised and the app's callbacks are stable, so player ticks no longer re-render every list. Long playlists render 100 songs at a time. Lyrics tick at frame rate only for the line being sung. Cache writes no longer read all of storage. The user's own YouTube Music tabs no longer message BitChord every second.
 
+## v0.9.3 (15 Oct 2026): ads and the YouTube player
+
+- Ads can only appear in the last-resort YouTube player (JioSaavn and YouTube direct streams are plain audio with no ads). BitChord does not block or skip YouTube's ads, since that breaks YouTube's terms.
+- New switch in Settings → Sources → YouTube player. Turn it off for ad-free sources only: a song with no ad-free source is skipped (BitChord never loops through a queue where nothing plays).
+- Signed-in YouTube cookies reach the embedded player, so YouTube Premium accounts get it ad-free.
+- When YouTube plays an ad, Now Playing says "ad playing, your song is next" and holds the clock, lyrics and progress at the song's start.
+
 ## v0.9.2 (15 Oct 2026): sleep timer
 
 - The sleep timer (moon) button moved from the left of the Now Playing bottom row to the right, beside Up Next. Its menu used to open off the left edge of the screen, hiding most of the options; it now opens fully on screen at every width.
