@@ -302,15 +302,13 @@ export function ExplorePage({ ctx, onMood }: { ctx: Ctx; onMood: (c: MoodChip) =
 // ---------- Library ----------
 // ---------- Library (Apple Music layout: category rows + Recently Added) ----------
 const LIB_ROWS: { id: string; label: string; icon: string }[] = [
-  { id: 'playlists', label: 'Playlists', icon: 'playlists-o' },
-  { id: 'albums', label: 'Albums', icon: 'album-o' },
-  { id: 'songs', label: 'Songs', icon: 'note-o' },
-  { id: 'favorites', label: 'Favorite Songs', icon: 'star-o' },
-  { id: 'recent', label: 'Recently Played', icon: 'clock-o' },
-  { id: 'made', label: 'Made For You', icon: 'made-for-you' },
-  { id: 'transfer', label: 'Transfer Music', icon: 'swap-o' },
+  { id: 'playlists', label: 'Playlists', icon: 'queue' },
+  { id: 'albums', label: 'Albums', icon: 'album' },
+  { id: 'songs', label: 'Songs', icon: 'lyrics' },
+  { id: 'favorites', label: 'Liked songs', icon: 'heart' },
+  { id: 'recent', label: 'Recently played', icon: 'history' },
+  { id: 'transfer', label: 'Transfer music', icon: 'swap' },
 ];
-const DEFAULT_LIB_ROWS = ['playlists', 'albums', 'songs', 'favorites', 'recent', 'made', 'transfer'];
 function useStored<T>(get: () => Promise<T[]>, key: string) {
   const [v, setV] = useState<T[] | null>(null);
   useEffect(() => {
@@ -325,10 +323,10 @@ function useStored<T>(get: () => Promise<T[]>, key: string) {
 function shuffle<T>(a: T[]): T[] { const t = [...a]; for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [t[i], t[j]] = [t[j], t[i]]; } return t; }
 function PlayShuffle({ tracks, more }: { tracks: Track[]; more?: () => void }) {
   return (
-    <div className="coll-actions top am">
-      <button className="am-btn" disabled={!tracks.length} onClick={() => playQueue(tracks, 0)}><Icon name="play" size={18} /> Play</button>
-      <button className="am-btn" disabled={!tracks.length} onClick={() => playQueue(shuffle(tracks), 0)}><Icon name="shuffle" size={18} /> Shuffle</button>
-      {more && <button className="am-round" aria-label="More options" aria-haspopup="menu" onClick={more}><Icon name="more" size={18} /></button>}
+    <div className="coll-actions top">
+      <button className="pill white" disabled={!tracks.length} onClick={() => playQueue(tracks, 0)}><Icon name="play" size={16} /> Play</button>
+      <button className="pill ghost" disabled={!tracks.length} onClick={() => playQueue(shuffle(tracks), 0)}><Icon name="shuffle" size={16} /> Shuffle</button>
+      {more && <button className="pill ghost icon-only" aria-label="More options" aria-haspopup="menu" onClick={more}><Icon name="more" size={16} /></button>}
     </div>
   );
 }
@@ -346,15 +344,7 @@ export function LibraryPage({ ctx, signedIn, session, onSignIn, onTransfer }: { 
   const colls = useStored(getLibCollections, 'libCollections');
   const mine = useStored(getPlaylists, 'localPlaylists');
   const lists = useCached(signedIn ? `library:playlists:${session}` : null, getLibraryPlaylists, HOUR);
-  const made = useCached(signedIn ? `library:made:${session}` : null, async () => (await getHome()).shelves.filter((x) => /mix|for you|made for|discover/i.test(x.title)).flatMap((x) => x.cards).slice(0, 24), HOUR);
   const [view, setView] = useState<string>('home');
-  const [edit, setEdit] = useState(false);
-  const [rows, setRows] = useState<string[]>(DEFAULT_LIB_ROWS);
-  useEffect(() => { chrome.storage.local.get('libraryRows').then((r) => { if (Array.isArray(r.libraryRows)) setRows(r.libraryRows); }); }, []);
-  const toggleRow = (id: string) => {
-    const next = rows.includes(id) ? rows.filter((x) => x !== id) : DEFAULT_LIB_ROWS.filter((x) => x === id || rows.includes(x));
-    setRows(next); chrome.storage.local.set({ libraryRows: next });
-  };
   const [imported, setImported] = useState<ImportedPlaylist[] | null>(null);
   useEffect(() => {
     getImported().then(setImported);
@@ -389,7 +379,7 @@ export function LibraryPage({ ctx, signedIn, session, onSignIn, onTransfer }: { 
           <><PlayShuffle tracks={list} /><TrackGrid tracks={list} ctx={ctx} /></>
         ) : view === 'songs'
           ? <Empty icon="note-o" title="Add Songs to Your Library" sub="Tap ⋯ on any song, then Add to Library." />
-          : view === 'favorites' ? <Empty icon="star-o" title="No Favorites Yet" sub="Tap the star on Now Playing, or Favorite in a song’s menu." />
+          : view === 'favorites' ? <Empty icon="heart-o" title="No liked songs yet" sub="Tap the heart on Now Playing, or Like in a song’s menu." />
           : <Empty icon="clock-o" title="Nothing Played Yet" sub="Songs you play show up here." />}
       </div>
     );
@@ -436,18 +426,6 @@ export function LibraryPage({ ctx, signedIn, session, onSignIn, onTransfer }: { 
       </div>
     );
   }
-  if (view === 'made') {
-    return (
-      <div>
-        <Back onClick={home} />
-        <h2 className="sub-title">Made For You</h2>
-        {!signedIn ? <Empty icon="made-for-you" title="Mixes Made For You" sub="Sign in to YouTube Music to get your personal mixes."><button className="pill white" onClick={onSignIn}>Sign In</button></Empty>
-          : made.loading ? <SkelCards /> : made.data?.length
-            ? <div className="card-grid lib-grid">{made.data.map((c, i) => <CardTile key={i} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} more />)}</div>
-            : made.error ? <Err msg={made.error} retry={made.retry} /> : <Empty icon="made-for-you" title="No Mixes Yet" sub="Keep listening and YouTube Music will make some." />}
-      </div>
-    );
-  }
   // Recently Added: everything you put in the library, newest first.
   const added: (Card & { at: number })[] = [
     ...(mine ?? []).map((p) => ({ ...playlistCard(p), at: p.created })),
@@ -457,28 +435,17 @@ export function LibraryPage({ ctx, signedIn, session, onSignIn, onTransfer }: { 
   const count: Record<string, number | undefined> = { songs: songs?.length, favorites: liked?.length, recent: recent?.length, albums: colls?.filter((c) => c.kind === 'album').length, playlists: (mine?.length ?? 0) + (imported?.length ?? 0) + (colls?.filter((c) => c.kind === 'playlist').length ?? 0) };
   return (
     <div className="library-am">
-      <div className="lib-title">
-        <h1 className="big-title">Library</h1>
-        <button className="edit-link" onClick={() => setEdit(!edit)} aria-pressed={edit}>{edit ? 'Done' : 'Edit'}</button>
-      </div>
-      {!signedIn && !edit && <SignInBanner onSignIn={onSignIn} />}
-      <div className="am-cats" role={edit ? 'group' : undefined} aria-label={edit ? 'Choose what shows in Library' : undefined}>
-        {(edit ? LIB_ROWS : LIB_ROWS.filter((r) => rows.includes(r.id))).map((r) => edit ? (
-          <button key={r.id} className="am-cat editing" role="checkbox" aria-checked={rows.includes(r.id)} onClick={() => toggleRow(r.id)}>
-            <span className={`am-check ${rows.includes(r.id) ? 'on' : ''}`}>{rows.includes(r.id) && <Icon name="check" size={14} />}</span>
-            <span className="am-cat-ico"><Icon name={r.icon} size={26} /></span>
-            <span className="am-cat-label">{r.label}</span>
-          </button>
-        ) : (
-          <button key={r.id} className="am-cat" data-row={r.id} onClick={() => (r.id === 'transfer' ? onTransfer() : setView(r.id))}>
-            <span className="am-cat-ico"><Icon name={r.icon} size={26} /></span>
-            <span className="am-cat-label">{r.label}</span>
-            {count[r.id] ? <span className="am-cat-count">{count[r.id]}</span> : null}
-            <Icon name="chev-right" size={18} />
+      {!signedIn && <SignInBanner onSignIn={onSignIn} />}
+      <div className="group">
+        {LIB_ROWS.map((r) => (
+          <button key={r.id} className="row" data-row={r.id} onClick={() => (r.id === 'transfer' ? onTransfer() : setView(r.id))}>
+            <span className={`row-icon ${r.id === 'favorites' ? 'liked' : ''}`}><Icon name={r.icon} size={18} /></span>
+            <span className="row-text"><span className="row-title">{r.label}</span><span className="row-sub">{r.id === 'transfer' ? 'From Spotify or Apple Music' : `${count[r.id] ?? 0} ${r.id === 'albums' ? (count[r.id] === 1 ? 'album' : 'albums') : r.id === 'playlists' ? (count[r.id] === 1 ? 'playlist' : 'playlists') : count[r.id] === 1 ? 'song' : 'songs'}`}</span></span>
+            <Icon name="chev-right" size={20} />
           </button>
         ))}
       </div>
-      {!edit && (added.length > 0 ? (
+      {(added.length > 0 ? (
         <section className="section">
           <SectionHead title="Recently Added" />
           <div className="card-grid lib-grid">{added.map((c) => <CardTile key={collKey(c)} c={c} onArtist={ctx.onArtist} onOpen={ctx.onOpen} more />)}</div>

@@ -1,11 +1,9 @@
-// Apple Music-style action sheets: the song menu (Now Playing ⋯, song rows),
-// album/playlist menus, Add to a Playlist, View Credits, Share Lyrics, Sleep
-// Timer, plus the confirmation HUD. One host renders whatever is open.
+// Apple Music-style action sheets, trimmed to the essentials: the song menu
+// (Now Playing ⋯, song rows), album/playlist menus, Add to a Playlist, plus the
+// confirmation HUD. One host renders whatever is open.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Card, PlayerState, Track } from '../../lib/types';
-import { addToYouTubePlaylist, getCollection, getLibraryPlaylists, getQueue, getTrackDetails, searchSongs, sized } from '../../lib/innertube';
-import { getLyrics, type LyricLine } from '../../lib/lyrics';
-import { toSeconds } from '../../lib/matcher';
+import { addToYouTubePlaylist, getCollection, getLibraryPlaylists, getQueue, searchSongs, sized } from '../../lib/innertube';
 import { getLiked, toggleLiked } from '../../lib/history';
 import {
   addToPlaylist, collInLibrary, createPlaylist, deletePlaylist, getPlaylists, getSuggestLess, inLibrary, localId,
@@ -21,16 +19,13 @@ type Sheet =
   | { kind: 'song'; t: Track; opts: SongMenuOpts }
   | { kind: 'card'; c: Card }
   | { kind: 'playlist-pick'; title: string; tracks: () => Promise<Track[]> }
-  | { kind: 'credits'; t: Track }
-  | { kind: 'lyrics'; t: Track }
-  | { kind: 'sleep' }
   | { kind: 'rename'; id: string; title: string }
   | { kind: 'new-playlist'; tracks?: () => Promise<Track[]> };
 
 let openFn: ((s: Sheet | null) => void) | null = null;
 let hudFn: ((h: { text: string; icon: string } | null) => void) | null = null;
 export const openSongMenu = (t: Track, opts: SongMenuOpts = {}) => openFn?.({ kind: 'song', t, opts });
-export const openCardMenu = (c: Card) => openFn?.({ kind: 'card', c });
+export const openCardMenu = (c: Card) => { if (c.kind !== 'artist') openFn?.({ kind: 'card', c }); };
 export const openNewPlaylist = () => openFn?.({ kind: 'new-playlist' });
 export function hud(text: string, icon = 'check') { hudFn?.({ text, icon }); }
 
@@ -63,14 +58,6 @@ async function seedId(t: Track): Promise<string | null> {
 const songUrl = (t: Track) => isYtId(t.videoId)
   ? `https://music.youtube.com/watch?v=${t.videoId}`
   : `https://music.youtube.com/search?q=${encodeURIComponent(`${t.title} ${t.artists}`)}`;
-function cardUrl(c: Card): string | null {
-  if (c.kind === 'artist' && c.browseId) return `https://music.youtube.com/channel/${c.browseId}`;
-  if (c.playlistId) return `https://music.youtube.com/playlist?list=${c.playlistId}`;
-  if (c.browseId?.startsWith('VL')) return `https://music.youtube.com/playlist?list=${c.browseId.slice(2)}`;
-  if (c.browseId?.startsWith('MPRE')) return `https://music.youtube.com/browse/${c.browseId}`;
-  if (c.videoId) return `https://music.youtube.com/watch?v=${c.videoId}`;
-  return null;
-}
 /** The system share sheet where Chrome has one, otherwise copy the link. */
 async function share(title: string, url: string | null, text?: string) {
   const data = { title, url: url ?? undefined, text };
@@ -87,7 +74,6 @@ export async function cardTracks(c: Card): Promise<Track[]> {
   if ((c.kind === 'song' || c.kind === 'video') && c.videoId) return [{ videoId: c.videoId, title: c.title, artists: c.subtitle.split(' • ')[0] ?? '', thumbnail: c.thumbnail }];
   return (await getCollection(c)).tracks;
 }
-function shuffled<T>(a: T[]): T[] { const t = [...a]; for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [t[i], t[j]] = [t[j], t[i]]; } return t; }
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 // ---------- building blocks ----------
@@ -181,9 +167,6 @@ export function ActionHost({ player, signedIn, onArtist, onOpen }: { player: Pla
         hud(ts.length ? 'Added to Playlist' : 'Playlist Created', 'playlist-add');
       }} />}
       {sheet?.kind === 'rename' && <NamePrompt label="Rename Playlist" action="Save" initial={sheet.title} onClose={close} onSubmit={async (name) => { await renamePlaylist(sheet.id, name); hud('Renamed', 'pencil'); }} />}
-      {sheet?.kind === 'credits' && <Credits t={sheet.t} player={player} onClose={close} />}
-      {sheet?.kind === 'lyrics' && <ShareLyrics t={sheet.t} player={player} onClose={close} />}
-      {sheet?.kind === 'sleep' && player && <SleepSheet s={player} onClose={close} />}
       {h && <div className="hud" key={h.n} role="status" aria-live="polite"><Icon name={h.icon} size={40} /><span>{h.text}</span></div>}
     </>
   );
@@ -207,13 +190,6 @@ function SongSheet({ t, opts, player, onClose, open, onArtist }: { t: Track; opt
     next: { id: 'next', label: 'Play Next', icon: 'play-next', run: async () => { await send({ type: 'add-next', track: t }); hud('Playing Next', 'play-next'); } },
     last: { id: 'last', label: 'Play Last', icon: 'play-last', run: async () => { await send({ type: 'add-queue', track: t }); hud('Playing Last', 'play-last'); } },
     shareSong: { id: 'share-song', label: 'Share Song', icon: 'share', run: () => share(`${t.title} · ${t.artists}`, songUrl(t), `${t.title} by ${t.artists}`) },
-    shareLyrics: { id: 'share-lyrics', label: 'Share Lyrics…', icon: 'share-lyrics', keepOpen: true, run: () => open({ kind: 'lyrics', t }) },
-    shareStation: { id: 'share-station', label: 'Share Station', icon: 'share', run: async () => {
-      const id = await seedId(t);
-      if (!id) throw new Error('No station for this song');
-      await share(`${t.title} Radio`, `https://music.youtube.com/watch?v=${id}&list=RDAMVM${id}`, `Station based on ${t.title} by ${t.artists}`);
-    } },
-    credits: { id: 'credits', label: 'View Credits', icon: 'info-o', keepOpen: true, run: () => open({ kind: 'credits', t }) },
     station: { id: 'station', label: 'Create Station', icon: 'station-add', run: async () => {
       if (!isCurrent) { await playSongWithRadio(t); hud('Station Created', 'station-add'); return; }
       // Keep the song playing; replace what's up next with its station.
@@ -225,11 +201,9 @@ function SongSheet({ t, opts, player, onClose, open, onArtist }: { t: Track; opt
       await send({ type: 'append', tracks: radio.slice(0, 40) });
       hud('Station Created', 'station-add');
     } },
-    sleep: { id: 'sleep', label: 'Sleep Timer', icon: 'moon', keepOpen: true, hint: s?.sleepEndOfTrack ? 'End of song' : s?.sleepAt ? `${Math.max(1, Math.ceil((s.sleepAt - Date.now()) / 60000))} min` : undefined, run: () => open({ kind: 'sleep' }) },
-    artist: { id: 'artist', label: 'Go to Artist', icon: 'person-o', run: () => onArtist(t.artists, t.artistId) },
     fav: f?.fav
-      ? { id: 'fav', label: 'Undo Favorite', icon: 'star', run: async () => { await toggleLiked(t); hud('Removed from Favorites', 'star-o'); } }
-      : { id: 'fav', label: 'Favorite', icon: 'star-o', run: async () => { await toggleLiked(t); hud('Favorited', 'star'); } },
+      ? { id: 'fav', label: 'Remove from Liked Songs', icon: 'heart', run: async () => { await toggleLiked(t); hud('Removed from Liked Songs', 'heart-o'); } }
+      : { id: 'fav', label: 'Like', icon: 'heart-o', run: async () => { await toggleLiked(t); hud('Added to Liked Songs', 'heart'); } },
     less: f?.less
       ? { id: 'less', label: 'Undo Suggest Less', icon: 'thumb-down-f', run: async () => { await setSuggestLess(t.videoId, false); hud('Got It', 'check'); } }
       : { id: 'less', label: 'Suggest Less', icon: 'thumb-down', run: async () => {
@@ -241,9 +215,10 @@ function SongSheet({ t, opts, player, onClose, open, onArtist }: { t: Track; opt
         } },
     removePl: { id: 'remove-pl', label: 'Remove from Playlist', icon: 'minus-circle', danger: true, run: async () => { await removeFromPlaylist(opts.playlistId!, t.videoId); hud('Removed', 'minus-circle'); } },
   };
+  // Only what matters: the star and the moon already sit on Now Playing.
   const order = np
-    ? ['lib', 'playlist', 'shareSong', 'shareLyrics', 'shareStation', 'credits', 'station', 'sleep', 'fav', 'less']
-    : ['lib', 'playlist', 'next', 'last', 'shareSong', 'credits', 'station', ...(t.artists ? ['artist'] : []), 'fav', 'less', ...(opts.playlistId ? ['removePl'] : [])];
+    ? ['lib', 'playlist', 'shareSong', 'station', 'less']
+    : ['next', 'last', 'lib', 'playlist', 'fav', 'shareSong', ...(opts.playlistId ? ['removePl'] : [])];
   return (
     <SheetFrame label={`${t.title} options`} onClose={onClose} head={<Head img={t.thumbnail} title={t.title} sub={[t.artists, t.album].filter(Boolean).join(' · ')} />}>
       {f ? <Rows rows={order.map((k) => R[k])} close={onClose} /> : <div className="sheet-wait"><span className="spinner" /></div>}
@@ -263,31 +238,17 @@ function CardSheet({ c, player, onClose, open, onArtist, onOpen }: { c: Card; pl
     return <SongSheet t={{ videoId: c.videoId ?? '', title: c.title, artists: c.subtitle.split(' • ')[0] ?? '', thumbnail: c.thumbnail }} opts={{}} player={player} onClose={onClose} open={open} onArtist={onArtist} />;
   }
   let rows: Row[];
-  if (c.kind === 'artist') {
+  {
     rows = [
-      { id: 'open', label: 'Go to Artist', icon: 'person-o', run: () => onArtist(c.title, c.browseId) },
-      { id: 'share', label: 'Share Artist', icon: 'share', run: () => share(c.title, cardUrl(c)) },
-    ];
-  } else {
-    rows = [
+      { id: 'next', label: 'Play Next', icon: 'play-next', run: async () => { const ts = await tracks(); await (empty() ? playQueue(ts, 0) : send({ type: 'add-next-many', tracks: ts })); hud('Playing Next', 'play-next'); } },
+      { id: 'last', label: 'Play Last', icon: 'play-last', run: async () => { const ts = await tracks(); await (empty() ? playQueue(ts, 0) : send({ type: 'append', tracks: ts, keepDupes: true })); hud('Playing Last', 'play-last'); } },
       lid
         ? { id: 'lib', label: 'Delete from Library', icon: 'trash-o', danger: true, run: async () => { if (!confirm(`Delete “${c.title}”? This can’t be undone.`)) return; await deletePlaylist(lid); hud('Deleted', 'trash-o'); } }
         : lib
           ? { id: 'lib', label: 'Remove from Library', icon: 'trash-o', danger: true, run: async () => { await setCollInLibrary(c, false); hud('Removed from Library', 'trash-o'); } }
           : { id: 'lib', label: 'Add to Library', icon: 'plus', run: async () => { await setCollInLibrary(c, true); hud('Added to Library', 'check'); } },
-      { id: 'play', label: 'Play', icon: 'play-o', run: async () => { await playQueue(await tracks(), 0); } },
-      { id: 'shuffle', label: 'Shuffle', icon: 'shuffle2', run: async () => { await playQueue(shuffled(await tracks()), 0); } },
-      { id: 'next', label: 'Play Next', icon: 'play-next', run: async () => { const ts = await tracks(); await (empty() ? playQueue(ts, 0) : send({ type: 'add-next-many', tracks: ts })); hud('Playing Next', 'play-next'); } },
-      { id: 'last', label: 'Play Last', icon: 'play-last', run: async () => { const ts = await tracks(); await (empty() ? playQueue(ts, 0) : send({ type: 'append', tracks: ts })); hud('Playing Last', 'play-last'); } },
       { id: 'playlist', label: 'Add to a Playlist…', icon: 'playlist-add', keepOpen: true, run: () => open({ kind: 'playlist-pick', title: c.title, tracks }) },
       ...(lid ? [{ id: 'rename', label: 'Rename', icon: 'pencil', keepOpen: true, run: () => open({ kind: 'rename', id: lid, title: c.title }) }] : []),
-      { id: 'share', label: `Share ${noun}`, icon: 'share', run: async () => {
-        const url = cardUrl(c);
-        if (url) return share(c.title, url);
-        const ts = await tracks(); // your own playlist: share it as a list of songs
-        return share(c.title, null, `${c.title}\n${ts.map((t, i) => `${i + 1}. ${t.title} · ${t.artists} ${songUrl(t)}`).join('\n')}`);
-      } },
-      ...(c.kind === 'album' || c.kind === 'playlist' ? [{ id: 'open', label: `Go to ${noun}`, icon: c.kind === 'album' ? 'album-o' : 'playlists-o', run: () => onOpen(c) }] : []),
     ];
   }
   return (
@@ -365,131 +326,3 @@ function NamePrompt({ label, action, initial, onSubmit, onClose }: { label: stri
   );
 }
 
-// ---------- View Credits ----------
-function Credits({ t, player, onClose }: { t: Track; player: PlayerState | null; onClose: () => void }) {
-  const [d, setD] = useState<Partial<Track> | null>(isYtId(t.videoId) ? null : {});
-  useEffect(() => { if (isYtId(t.videoId)) getTrackDetails(t.videoId).then(setD).catch(() => setD({})); }, [t.videoId]);
-  const artists = (d?.artists || t.artists).split(/\s*(?:,|&|\bfeat\.?|\bft\.?|\bx\b|\band\b)\s*/i).map((x) => x.trim()).filter(Boolean);
-  const current = player?.track?.videoId === t.videoId;
-  const sections: [string, string[]][] = [
-    ['Performed By', [...new Set(artists)]],
-    ['Album', [d?.album || t.album].filter(Boolean) as string[]],
-    ['Duration', [t.duration || d?.duration || (current && player!.duration ? `${Math.floor(player!.duration / 60)}:${String(Math.round(player!.duration % 60)).padStart(2, '0')}` : '')].filter(Boolean)],
-    ['Release Date', [t.releaseDate].filter(Boolean) as string[]],
-    ['Language', [t.language].filter(Boolean) as string[]],
-    ['Source', [current ? player!.stream : null].filter(Boolean) as string[]],
-  ];
-  return (
-    <SheetFrame label="Credits" onClose={onClose} wide head={<Head img={t.thumbnail} title="Credits" sub={`${t.title} · ${t.artists}`} onClose={onClose} />}>
-      {d == null ? <div className="sheet-wait"><span className="spinner" /></div> : (
-        <div className="credits">
-          {sections.filter(([, v]) => v.length).map(([k, v]) => (
-            <section key={k}><h4>{k}</h4>{v.map((x) => <p key={x}>{x}</p>)}</section>
-          ))}
-        </div>
-      )}
-    </SheetFrame>
-  );
-}
-
-// ---------- Share Lyrics… ----------
-async function lyricCard(t: Track, lines: string[]): Promise<Blob> {
-  const W = 1080, H = 1350;
-  const c = document.createElement('canvas'); c.width = W; c.height = H;
-  const g = c.getContext('2d')!;
-  let art: ImageBitmap | null = null;
-  try { art = await createImageBitmap(await (await fetch(sized(t.thumbnail, 544))).blob()); } catch { /* text-only card */ }
-  g.fillStyle = '#1c1c1e'; g.fillRect(0, 0, W, H);
-  if (art) { g.filter = 'blur(60px) saturate(1.4) brightness(.55)'; g.drawImage(art, -200, -200, W + 400, H + 400); g.filter = 'none'; }
-  g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(0, 0, W, H);
-  const pad = 96;
-  if (art) { g.save(); g.beginPath(); g.roundRect(pad, pad, 150, 150, 18); g.clip(); g.drawImage(art, pad, pad, 150, 150); g.restore(); }
-  g.fillStyle = '#fff'; g.font = '600 40px -apple-system, "SF Pro Display", Inter, system-ui, sans-serif';
-  g.fillText(t.title.slice(0, 40), pad + (art ? 180 : 0), pad + 66);
-  g.fillStyle = 'rgba(255,255,255,.7)'; g.font = '400 34px -apple-system, Inter, system-ui, sans-serif';
-  g.fillText(t.artists.slice(0, 44), pad + (art ? 180 : 0), pad + 118);
-  // the lyrics, wrapped, vertically centred
-  g.font = '700 64px -apple-system, "SF Pro Display", Inter, system-ui, sans-serif';
-  const wrapped: string[] = [];
-  for (const l of lines) {
-    let row = '';
-    for (const w of l.split(/\s+/)) { const next = row ? `${row} ${w}` : w; if (g.measureText(next).width > W - pad * 2 && row) { wrapped.push(row); row = w; } else row = next; }
-    wrapped.push(row);
-  }
-  const lh = 84, top = Math.max(360, (H - wrapped.length * lh) / 2);
-  g.fillStyle = '#fff';
-  wrapped.slice(0, 11).forEach((l, i) => g.fillText(l, pad, top + i * lh));
-  g.fillStyle = 'rgba(255,255,255,.6)'; g.font = '600 30px -apple-system, Inter, system-ui, sans-serif';
-  g.fillText('BitChord', pad, H - pad);
-  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Couldn’t make the image'))), 'image/png'));
-}
-function ShareLyrics({ t, player, onClose }: { t: Track; player: PlayerState | null; onClose: () => void }) {
-  const [lines, setLines] = useState<LyricLine[] | string[] | null>(null);
-  const [pick, setPick] = useState<number[]>([]);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    const dur = toSeconds(t.duration) || (player?.track?.videoId === t.videoId ? Math.round(player.duration) : 0);
-    getLyrics(t.title, t.artists, dur || undefined, t.album)
-      .then((l) => setLines(l.synced?.filter((x) => x.text.trim()) ?? l.plain?.split('\n').filter((x) => x.trim()) ?? []))
-      .catch(() => setLines([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t.videoId]);
-  const text = (i: number) => { const l = lines![i]; return typeof l === 'string' ? l : l.text; };
-  const chosen = () => [...pick].sort((a, b) => a - b).map(text);
-  const toggle = (i: number) => setPick((p) => (p.includes(i) ? p.filter((x) => x !== i) : p.length >= 6 ? p : [...p, i]));
-  const run = async (kind: 'text' | 'image' | 'save') => {
-    setBusy(true);
-    try {
-      if (kind === 'text') { await navigator.clipboard.writeText(`${chosen().join('\n')}\n\n${t.title} · ${t.artists}`); hud('Lyrics Copied', 'copy'); }
-      else {
-        const blob = await lyricCard(t, chosen());
-        if (kind === 'image') { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); hud('Image Copied', 'copy'); }
-        else {
-          const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${t.title} lyrics.png`.replace(/[\\/:*?"<>|]/g, ''); a.click();
-          setTimeout(() => URL.revokeObjectURL(a.href), 4000); hud('Image Saved', 'download-o');
-        }
-      }
-      onClose();
-    } catch (e) { hud(errText(e), 'info-o'); } finally { setBusy(false); }
-  };
-  return (
-    <SheetFrame label="Share Lyrics" onClose={onClose} wide head={<Head img={t.thumbnail} title="Share Lyrics" sub={pick.length ? `${pick.length} of 6 lines` : 'Choose up to 6 lines'} onClose={onClose} />}>
-      {lines == null ? <div className="sheet-wait"><span className="spinner" /></div> : !lines.length ? <div className="sheet-empty">No lyrics for this song</div> : (
-        <>
-          <div className="ly-pick">
-            {lines.map((_, i) => (
-              <button key={i} role="menuitemcheckbox" aria-checked={pick.includes(i)} className={`ly-line ${pick.includes(i) ? 'on' : ''}`} onClick={() => toggle(i)}>{text(i)}</button>
-            ))}
-          </div>
-          <div className="sheet-actions">
-            <button className="pill ghost" disabled={!pick.length || busy} onClick={() => run('text')}><Icon name="copy" size={16} /> Copy Text</button>
-            <button className="pill ghost" disabled={!pick.length || busy} onClick={() => run('image')}><Icon name="copy" size={16} /> Copy Image</button>
-            <button className="pill white" disabled={!pick.length || busy} onClick={() => run('save')}><Icon name="download-o" size={16} /> Save Image</button>
-          </div>
-        </>
-      )}
-    </SheetFrame>
-  );
-}
-
-// ---------- Sleep Timer ----------
-export const SLEEP_OPTIONS: { label: string; min: number }[] = [
-  { label: '15 Minutes', min: 15 }, { label: '30 Minutes', min: 30 }, { label: '45 Minutes', min: 45 },
-  { label: '1 Hour', min: 60 }, { label: 'End of Current Song', min: -1 },
-];
-function SleepSheet({ s, onClose }: { s: PlayerState; onClose: () => void }) {
-  const on = !!s.sleepAt || s.sleepEndOfTrack;
-  const left = s.sleepAt ? Math.max(1, Math.ceil((s.sleepAt - Date.now()) / 60000)) : 0;
-  const pick = (min: number) => { send({ type: 'sleep', minutes: min }); hud(min === 0 ? 'Sleep Timer Off' : 'Sleep Timer Set', 'moon'); onClose(); };
-  return (
-    <SheetFrame label="Sleep Timer" onClose={onClose} head={<div className="sheet-title-bar"><span className="sheet-title">Sleep Timer</span><span className="sheet-title-sub">{on ? (s.sleepEndOfTrack ? 'Stops at the end of this song' : `Stops in ${left} min`) : 'Stop playing in'}</span></div>}>
-      {SLEEP_OPTIONS.map((o) => (
-        <button key={o.min} role="menuitem" className="sheet-row" onClick={() => pick(o.min)}>
-          <span className="sheet-ico"><Icon name="moon" size={22} /></span><span className="sheet-label">{o.label}</span>
-          {o.min === -1 && s.sleepEndOfTrack && <span className="sheet-chev accent"><Icon name="check" size={18} /></span>}
-        </button>
-      ))}
-      {on && <button role="menuitem" className="sheet-row danger" onClick={() => pick(0)}><span className="sheet-ico"><Icon name="close" size={22} /></span><span className="sheet-label">Turn Off Timer</span></button>}
-    </SheetFrame>
-  );
-}

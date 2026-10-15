@@ -111,7 +111,7 @@ export default function App() {
               <ArtistView key={overlay.id ?? overlay.name} name={overlay.name} id={overlay.id} ctx={ctx} onBack={back} />
             ) : (
               <>
-                {tab !== 'library' && <h1 className="big-title">{titles[tab]}</h1>}
+                <h1 className="big-title">{titles[tab]}</h1>
                 {tab === 'listen' && <ListenNow ctx={ctx} me={me} signedIn={signedIn || session === null} session={session ?? ''} onSignIn={() => setSettingsOpen(true)} onMood={onMood} goExplore={() => go('explore')} />}
                 {tab === 'explore' && <ExplorePage ctx={ctx} onMood={onMood} />}
                 {tab === 'library' && <LibraryPage ctx={ctx} me={me} signedIn={signedIn} session={session ?? ''} onSignIn={() => setSettingsOpen(true)} onTransfer={() => setSettingsOpen('transfer')} />}

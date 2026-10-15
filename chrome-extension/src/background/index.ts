@@ -663,7 +663,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       case 'append': {
         const have = new Set(state.queue.map((x) => x.videoId));
-        state.queue.push(...cmd.tracks.filter((x) => !have.has(x.videoId)));
+        // Play Last from a menu queues every song, as asked; autoplay radio skips songs already queued.
+        state.queue.push(...(cmd.keepDupes ? cmd.tracks : cmd.tracks.filter((x) => !have.has(x.videoId))));
         break;
       }
       case 'remove-index':

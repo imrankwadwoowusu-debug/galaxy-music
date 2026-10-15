@@ -134,7 +134,7 @@ export type UiCommand =
   | { type: 'add-next'; track: Track }
   | { type: 'add-queue'; track: Track }
   | { type: 'add-next-many'; tracks: Track[] }
-  | { type: 'append'; tracks: Track[] }
+  | { type: 'append'; tracks: Track[]; keepDupes?: boolean }
   | { type: 'remove-index'; index: number }
   | { type: 'move'; from: number; to: number } // absolute queue indices
   | { type: 'play-next-index'; index: number } // move a queued song to right after the current one

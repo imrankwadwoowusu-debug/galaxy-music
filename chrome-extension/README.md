@@ -187,6 +187,13 @@ Accessibility
 Speed
 - Rows and cards are memoised and the app's callbacks are stable, so player ticks no longer re-render every list. Long playlists render 100 songs at a time. Lyrics tick at frame rate only for the line being sung. Cache writes no longer read all of storage. The user's own YouTube Music tabs no longer message BitChord every second.
 
+## v0.10.1 (15 Oct 2026): essential menus only, BitChord look kept
+- Song ⋯ menu trimmed to essentials. Now Playing: Add to Library, Add to a Playlist…, Share Song, Create Station, Suggest Less. Song rows: Play Next, Play Last, Add/Remove from Library, Add to a Playlist…, Like, Share Song, Remove from Playlist. Albums/playlists: Play Next, Play Last, Add/Remove from Library, Add to a Playlist…, Rename/Delete (local playlists).
+- Removed: View Credits, Share Lyrics, Share Station, sleep timer in the menu, Go to Artist/Album, Made For You, Library Edit.
+- UI kept consistent with BitChord: heart (not star) for likes, plain icon buttons, Library categories in the existing group/row style with counts, Play/Shuffle as existing pills.
+- Play Last from a menu now queues every song even if already queued (append keepDupes); autoplay radio still dedupes.
+- Test: pw menus.mjs at 1100 and 420.
+
 ## v0.10.0 (15 Oct 2026): Apple Music menus and Library
 
 - Now Playing: a star (Favorite) and a ⋯ button beside the title, like Apple Music. The ⋯ sheet lists: Add to Library, Add to a Playlist…, Share Song, Share Lyrics…, Share Station, View Credits, Create Station, Sleep Timer, Favorite, Suggest Less.

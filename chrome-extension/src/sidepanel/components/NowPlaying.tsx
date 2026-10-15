@@ -183,11 +183,11 @@ export function NowPlaying({ s, settings, onArtist }: { s: PlayerState; settings
           <div className="np-title" title={t.title}>{t.title}</div>
           <div className="np-artist link" onClick={() => onArtist(t.artists, t.artistId)}>{t.artists}</div>
         </div>
-        <button className={`np-round ${liked ? 'on' : ''}`} title={liked ? 'Undo Favorite' : 'Favorite'} aria-label={liked ? 'Undo Favorite' : 'Favorite'} aria-pressed={liked} onClick={() => toggleLiked(t).then(setLiked)}>
-          <Icon name={liked ? 'star' : 'star-o'} size={18} />
+        <button className={`icon-btn ${liked ? 'on' : ''}`} title="Like" aria-pressed={liked} onClick={() => toggleLiked(t).then(setLiked)}>
+          <Icon name={liked ? 'heart' : 'heart-o'} />
         </button>
-        <button className="np-round" title="More" aria-label="More options" aria-haspopup="menu" onClick={() => openSongMenu(t, { nowPlaying: true })}>
-          <Icon name="more-v" size={18} />
+        <button className="icon-btn np-more" title="More" aria-label="More options" aria-haspopup="menu" onClick={() => openSongMenu(t, { nowPlaying: true })}>
+          <Icon name="more" />
         </button>
       </div>
       <Seek s={s} />
