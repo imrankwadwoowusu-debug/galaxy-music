@@ -402,6 +402,9 @@ object AppSettings {
     /** Drops haze blur (status bar, mini player, bottom fade, lyrics focus) for a solid-fill look. */
     val reduceDynamicBlur = MutableStateFlow(false)
 
+    /** Curves the outer corners of the miniplayer album art to match the player pill. */
+    val roundMiniPlayerArtwork = MutableStateFlow(false)
+
     /** Real backdrop-sampled glass (blur, lens refraction) on the floating nav bar, Android 12+ only. */
     val liquidGlass = MutableStateFlow(false)
 
@@ -869,6 +872,7 @@ object AppSettings {
         preferMusicOnly.value = prefs.getBoolean(KEY_PREFER_MUSIC_ONLY, false)
         smartVersionAlignment.value = prefs.getBoolean(KEY_SMART_VERSION_ALIGNMENT, true)
         reduceDynamicBlur.value = prefs.getBoolean(KEY_REDUCE_BLUR, false)
+        roundMiniPlayerArtwork.value = prefs.getBoolean(KEY_ROUND_MINIPLAYER_ARTWORK, false)
         liquidGlass.value = prefs.getBoolean(KEY_LIQUID_GLASS, false)
         lyricsBlur.value = prefs.getBoolean(KEY_LYRICS_BLUR, true)
         lyricsOffsetMs.value = prefs.getInt(KEY_LYRICS_OFFSET_MS, 0)
@@ -1284,6 +1288,11 @@ object AppSettings {
     fun setLiquidGlass(value: Boolean) {
         liquidGlass.value = value
         prefs.edit().putBoolean(KEY_LIQUID_GLASS, value).apply()
+    }
+
+    fun setRoundMiniPlayerArtwork(value: Boolean) {
+        roundMiniPlayerArtwork.value = value
+        prefs.edit().putBoolean(KEY_ROUND_MINIPLAYER_ARTWORK, value).apply()
     }
 
     fun setHighPerformanceMode(value: Boolean) {
@@ -2030,6 +2039,7 @@ object AppSettings {
     private const val KEY_PREFER_MUSIC_ONLY = "prefer_music_only"
     private const val KEY_SMART_VERSION_ALIGNMENT = "smart_version_alignment"
     private const val KEY_REDUCE_BLUR = "reduce_dynamic_blur"
+    private const val KEY_ROUND_MINIPLAYER_ARTWORK = "round_miniplayer_artwork"
     private const val KEY_LIQUID_GLASS = "liquid_glass"
     private const val KEY_LYRICS_BLUR = "lyrics_blur"
     private const val KEY_LYRICS_OFFSET_MS = "lyrics_offset_ms"

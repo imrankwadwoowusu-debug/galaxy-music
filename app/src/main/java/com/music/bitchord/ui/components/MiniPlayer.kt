@@ -134,6 +134,27 @@ private val ROW_PADDING_HORIZONTAL = 12.dp
  */
 private val ART_CORNER = 8.dp
 
+/**
+ * The artwork's shape in the miniplayer.
+ *
+ * When [rounded] is true, the outer corners (top-start and bottom-start) are curved
+ * with a 20dp radius to match the concentric roundness of the 56dp outer pill
+ * (28dp pill radius - 8dp vertical padding = 20dp, exactly half the 40dp artwork height),
+ * while top-end and bottom-end remain flat (0dp) facing the track title.
+ * When [rounded] is false, all four corners retain the standard [ART_CORNER] (8dp).
+ */
+internal fun miniPlayerArtShape(rounded: Boolean): RoundedCornerShape =
+    if (rounded) {
+        RoundedCornerShape(
+            topStart = 20.dp,
+            bottomStart = 20.dp,
+            topEnd = 0.dp,
+            bottomEnd = 0.dp,
+        )
+    } else {
+        RoundedCornerShape(ART_CORNER)
+    }
+
 /** Distance that makes a horizontal drag an intentional track change. */
 private val TRACK_SWIPE_THRESHOLD = 72.dp
 
@@ -360,7 +381,10 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val roundMiniPlayerArtwork by AppSettings.roundMiniPlayerArtwork.collectAsStateWithLifecycle()
     val haptics = rememberHaptics()
+    val artShape = miniPlayerArtShape(roundMiniPlayerArtwork)
+    val dockCorner = if (roundMiniPlayerArtwork) 20.dp else ART_CORNER
     // percent rather than a dp figure, so the corner stays exactly half the
     // height if the row's contents ever change it — which is what keeps a pill
     // a pill instead of a rounded rectangle. Same idiom as [FloatingBottomBar]
@@ -414,9 +438,9 @@ fun MiniPlayer(
                 contentDescription = null,
                 modifier = Modifier
                     .size(40.dp)
-                    .playerDockArt(dock, ART_CORNER)
-                    .clip(RoundedCornerShape(ART_CORNER))
-                    .thumbnailBorder(RoundedCornerShape(ART_CORNER))
+                    .playerDockArt(dock, dockCorner)
+                    .clip(artShape)
+                    .thumbnailBorder(artShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             )
             Spacer(Modifier.width(10.dp))

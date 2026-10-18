@@ -42,6 +42,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.bitchord.data.settings.AppSettings
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -292,6 +294,7 @@ private fun GlassNowPlaying(
     modifier: Modifier = Modifier,
 ) {
     val haptics = rememberHaptics()
+    val roundMiniPlayerArtwork by AppSettings.roundMiniPlayerArtwork.collectAsStateWithLifecycle()
     val pressSource = remember { MutableInteractionSource() }
     val isPressed by pressSource.collectIsPressedAsState()
     val pressScale by animateFloatAsState(
@@ -352,6 +355,13 @@ private fun GlassNowPlaying(
                     vertical = if (isInline) 4.dp else 8.dp,
                 ),
         ) {
+            val artShape = if (isInline) {
+                RoundedCornerShape(6.dp)
+            } else {
+                miniPlayerArtShape(roundMiniPlayerArtwork)
+            }
+            val dockCorner = if (isInline) 6.dp else (if (roundMiniPlayerArtwork) 20.dp else 8.dp)
+
             AsyncImage(
                 model = rememberRemoteArtworkUrl(song)?.artworkAt(ROW_ART_PX),
                 contentDescription = null,
@@ -359,8 +369,8 @@ private fun GlassNowPlaying(
                     .size(artSize)
                     // Whichever of the two densities is on screen is the one
                     // the player flies to: only one is composed at rest.
-                    .playerDockArt(dock, if (isInline) 6.dp else 8.dp)
-                    .clip(RoundedCornerShape(if (isInline) 6.dp else 8.dp))
+                    .playerDockArt(dock, dockCorner)
+                    .clip(artShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             )
             Spacer(Modifier.width(if (isInline) 8.dp else 10.dp))

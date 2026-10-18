@@ -69,6 +69,7 @@ import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlaylistPlay
+import androidx.compose.material.icons.rounded.RoundedCorner
 import androidx.compose.material.icons.rounded.SignalCellularAlt
 import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material.icons.rounded.Storage
@@ -212,6 +213,7 @@ fun SettingsScreen(
     val nerdStats by AppSettings.showNerdStats.collectAsStateWithLifecycle()
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val roundMiniPlayerArtwork by AppSettings.roundMiniPlayerArtwork.collectAsStateWithLifecycle()
     val liquidGlass by AppSettings.liquidGlass.collectAsStateWithLifecycle()
     val liquidGlassSupported = isGlassSupported()
     val lyricsBlur by AppSettings.lyricsBlur.collectAsStateWithLifecycle()
@@ -831,6 +833,25 @@ fun SettingsScreen(
                         )
                     },
                     onClick = { AppSettings.setLiquidGlass(!liquidGlass) },
+                )
+            }
+            val roundMiniPlayerArtTitle = stringResource(R.string.round_miniplayer_artwork)
+            row(roundMiniPlayerArtTitle, "miniplayer", "artwork", "round") {
+                SettingsRow(
+                    icon = Icons.Rounded.RoundedCorner,
+                    title = roundMiniPlayerArtTitle,
+                    subtitle = stringResource(R.string.round_miniplayer_artwork_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = roundMiniPlayerArtwork,
+                            onCheckedChange = AppSettings::setRoundMiniPlayerArtwork,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { AppSettings.setRoundMiniPlayerArtwork(!roundMiniPlayerArtwork) },
                 )
             }
             // Left out where the player won't honour it: a window too wide for
