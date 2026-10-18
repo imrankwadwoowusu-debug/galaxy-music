@@ -268,6 +268,10 @@
     <string name="prefer_music_only_subtitle">For music videos, show the video details while finding and loading the catalogue audio version</string>
     <string name="smart_version_alignment">Smart audio alignment</string>
     <string name="smart_version_alignment_subtitle">Analyze audio waveforms to match the exact corresponding playback moment</string>
+    <string name="prefetch_addon_sources" translatable="false">Pre-resolve addon sources</string>
+    <string name="prefetch_addon_sources_subtitle" translatable="false">Resolve high-quality addon streams for upcoming queue tracks before playback starts</string>
+    <string name="source_crossfade" translatable="false">Seamless source crossfade</string>
+    <string name="source_crossfade_subtitle" translatable="false">Micro-crossfade across dual players when upgrading stream quality mid-playback</string>
     <string name="equalizer">Equalizer</string>
     <string name="equalizer_subtitle">Tone, seven bands and balance</string>
     <string name="equalizer_footer">Shapes the sound inside BitChord, before it reaches the system.</string>

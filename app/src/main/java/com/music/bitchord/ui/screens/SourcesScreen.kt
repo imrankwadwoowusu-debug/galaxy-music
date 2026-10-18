@@ -128,6 +128,7 @@ fun SourcesScreen(
     val cellularQuality by AppSettings.audioQualityCellular.collectAsStateWithLifecycle()
     val metered by AppSettings.meteredConnection.collectAsStateWithLifecycle()
     val upgradeLengthSlackSeconds by AppSettings.upgradeLengthSlackSeconds.collectAsStateWithLifecycle()
+    val prefetchAddonSources by AppSettings.prefetchAddonSources.collectAsStateWithLifecycle()
     val webdavUrl by AppSettings.webdavUrl.collectAsStateWithLifecycle()
     val webdavUsername by AppSettings.webdavUsername.collectAsStateWithLifecycle()
     val webdavPassword by AppSettings.webdavPassword.collectAsStateWithLifecycle()
@@ -369,6 +370,23 @@ fun SourcesScreen(
                     AppSettings.MAX_UPGRADE_LENGTH_SLACK_SECONDS.toFloat(),
                 steps = AppSettings.MAX_UPGRADE_LENGTH_SLACK_SECONDS -
                     AppSettings.MIN_UPGRADE_LENGTH_SLACK_SECONDS - 1,
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.Extension,
+                title = stringResource(R.string.prefetch_addon_sources),
+                subtitle = stringResource(R.string.prefetch_addon_sources_subtitle),
+                trailing = {
+                    Switch(
+                        checked = prefetchAddonSources,
+                        onCheckedChange = AppSettings::setPrefetchAddonSources,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = { AppSettings.setPrefetchAddonSources(!prefetchAddonSources) },
             )
         }
 

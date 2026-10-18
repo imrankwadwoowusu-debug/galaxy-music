@@ -399,6 +399,12 @@ object AppSettings {
     /** Analyzes audio waveform/envelope to align matching playback moment between versions. */
     val smartVersionAlignment = MutableStateFlow(true)
 
+    /** Pre-resolves and pins high-quality addon streams for upcoming queue tracks before playback starts. */
+    val prefetchAddonSources = MutableStateFlow(false)
+
+    /** Seamlessly crossfades between dual players when upgrading stream quality mid-playback. */
+    val sourceCrossfadeEnabled = MutableStateFlow(false)
+
     /** Drops haze blur (status bar, mini player, bottom fade, lyrics focus) for a solid-fill look. */
     val reduceDynamicBlur = MutableStateFlow(false)
 
@@ -868,6 +874,8 @@ object AppSettings {
         dontRepeatSuggestions.value = prefs.getBoolean(KEY_DONT_REPEAT_SUGGESTIONS, false)
         preferMusicOnly.value = prefs.getBoolean(KEY_PREFER_MUSIC_ONLY, false)
         smartVersionAlignment.value = prefs.getBoolean(KEY_SMART_VERSION_ALIGNMENT, true)
+        prefetchAddonSources.value = prefs.getBoolean(KEY_PREFETCH_ADDON_SOURCES, false)
+        sourceCrossfadeEnabled.value = prefs.getBoolean(KEY_SOURCE_CROSSFADE, false)
         reduceDynamicBlur.value = prefs.getBoolean(KEY_REDUCE_BLUR, false)
         liquidGlass.value = prefs.getBoolean(KEY_LIQUID_GLASS, false)
         lyricsBlur.value = prefs.getBoolean(KEY_LYRICS_BLUR, true)
@@ -1271,6 +1279,16 @@ object AppSettings {
     fun setSmartVersionAlignment(value: Boolean) {
         smartVersionAlignment.value = value
         prefs.edit().putBoolean(KEY_SMART_VERSION_ALIGNMENT, value).apply()
+    }
+
+    fun setPrefetchAddonSources(value: Boolean) {
+        prefetchAddonSources.value = value
+        prefs.edit().putBoolean(KEY_PREFETCH_ADDON_SOURCES, value).apply()
+    }
+
+    fun setSourceCrossfadeEnabled(value: Boolean) {
+        sourceCrossfadeEnabled.value = value
+        prefs.edit().putBoolean(KEY_SOURCE_CROSSFADE, value).apply()
     }
 
     fun setReduceDynamicBlur(value: Boolean) {
@@ -2029,6 +2047,8 @@ object AppSettings {
     private const val KEY_DONT_REPEAT_SUGGESTIONS = "dont_repeat_suggestions"
     private const val KEY_PREFER_MUSIC_ONLY = "prefer_music_only"
     private const val KEY_SMART_VERSION_ALIGNMENT = "smart_version_alignment"
+    private const val KEY_PREFETCH_ADDON_SOURCES = "prefetch_addon_sources"
+    private const val KEY_SOURCE_CROSSFADE = "source_crossfade_enabled"
     private const val KEY_REDUCE_BLUR = "reduce_dynamic_blur"
     private const val KEY_LIQUID_GLASS = "liquid_glass"
     private const val KEY_LYRICS_BLUR = "lyrics_blur"

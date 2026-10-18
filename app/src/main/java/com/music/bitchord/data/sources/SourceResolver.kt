@@ -324,7 +324,8 @@ object SourceResolver {
         if (target.title.isBlank() || target.isVideo) return null
         val active = SourceRegistry.activeForPlayback()
         val youtube = active.firstOrNull { it.kind == SourceKind.YOUTUBE } ?: return null
-        val quick = rankedAbove(youtube.configId, active).filter { it.kind.worthPrefetching }
+        val quick = rankedAbove(youtube.configId, active)
+            .filter { it.kind.worthPrefetching && (it.kind != SourceKind.ADDON || AppSettings.prefetchAddonSources.value) }
         if (quick.isEmpty()) return null
         val (source, stream) = bestAcross(quick, target, requestForNow()) ?: return null
         TrackLog.d(
