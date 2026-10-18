@@ -1112,8 +1112,9 @@ class SourcesTest {
      * JioSaavn earns the speculative ask.
      */
     @Test
-    fun `only the quick source is worth resolving ahead of playback`() {
+    fun `only quick sources are worth resolving ahead of playback`() {
         assertTrue(SourceKind.JIOSAAVN.worthPrefetching)
+        assertTrue(SourceKind.ADDON.worthPrefetching)
         assertFalse(SourceKind.MODULE.worthPrefetching)
         assertFalse(SourceKind.CUSTOM_MODULE.worthPrefetching)
     }
