@@ -247,6 +247,7 @@ fun SettingsScreen(
     val dontRepeatSuggestions by AppSettings.dontRepeatSuggestions.collectAsStateWithLifecycle()
     val preferMusicOnly by AppSettings.preferMusicOnly.collectAsStateWithLifecycle()
     val smartVersionAlignment by AppSettings.smartVersionAlignment.collectAsStateWithLifecycle()
+    val sourceCrossfadeEnabled by AppSettings.sourceCrossfadeEnabled.collectAsStateWithLifecycle()
     val filterNonMusicAudio by AppSettings.filterNonMusicAudio.collectAsStateWithLifecycle()
     val localMusicFolderUri by AppSettings.localMusicFolderUri.collectAsStateWithLifecycle()
     val highPerformanceMode by AppSettings.highPerformanceMode.collectAsStateWithLifecycle()
@@ -572,6 +573,25 @@ fun SettingsScreen(
                         )
                     },
                     onClick = { AppSettings.setPreferMusicOnly(!preferMusicOnly) },
+                )
+            }
+            val sourceCrossfadeTitle = stringResource(R.string.source_crossfade)
+            row(sourceCrossfadeTitle, "crossfade", "source", "upgrade", "seamless") {
+                SettingsRow(
+                    icon = Icons.Rounded.Tune,
+                    title = sourceCrossfadeTitle,
+                    subtitle = stringResource(R.string.source_crossfade_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = sourceCrossfadeEnabled,
+                            onCheckedChange = AppSettings::setSourceCrossfadeEnabled,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { AppSettings.setSourceCrossfadeEnabled(!sourceCrossfadeEnabled) },
                 )
             }
             val outputPrecisionTitle = stringResource(R.string.output_precision)
