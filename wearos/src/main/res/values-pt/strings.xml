@@ -5,8 +5,8 @@
     <string name="no_phone_body">Abra o BitChord no seu celular e mantenha-o perto do relógio.</string>
     <string name="retry">Tentar novamente</string>
     <string name="nothing_playing">Nada tocando</string>
-    <string name="nothing_playing_body">Toque algo no BitChord no seu celular.</string>
-    <string name="resume">Continuar</string>
+    <string name="nothing_playing_body">Reproduza algo no BitChord no seu celular.</string>
+    <string name="resume">Retomar</string>
     <string name="up_next">A seguir</string>
     <string name="queue_empty">Nada a seguir</string>
     <string name="loading">Carregando…</string>
@@ -15,8 +15,8 @@
     <string name="shuffle">Aleatório</string>
     <string name="repeat">Repetir</string>
     <string name="repeat_off">Desativado</string>
-    <string name="repeat_all">Tudo</string>
-    <string name="repeat_one">Uma</string>
+    <string name="repeat_all">Todas</string>
+    <string name="repeat_one">Uma música</string>
     <string name="on">Ativado</string>
     <string name="off">Desativado</string>
     <string name="love">Curtir</string>
