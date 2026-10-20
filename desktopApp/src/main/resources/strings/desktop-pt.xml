@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="d_a_slim_bar_above_the_toolbar">Uma barra fina acima da barra de ferramentas, com os botões da janela. Desativada, a janela não tem barra de título nenhuma.</string>
+    <string name="d_a_slim_bar_above_the_toolbar">Uma barra fina acima da barra de ferramentas, com os botões da janela. Desativada, a janela fica sem barra de título.</string>
     <string name="d_about_artist">Sobre o artista</string>
     <string name="d_account">Conta</string>
     <string name="d_addon_url">URL do addon</string>
-    <string name="d_an_addon_server">Um servidor de addons — o BitChord o consulta por HTTP simples e não executa código dele. Um índice de módulos compatível também funciona e é salvo como tal.</string>
+    <string name="d_an_addon_server">Um servidor de addons — o BitChord o consulta por HTTP simples e não executa código dele. Um índice de addons compatível também funciona e é salvo como tal.</string>
     <string name="d_animated_canvas">Canvas animado</string>
     <string name="d_artists_songs_albums_playlists">Artistas, músicas, álbuns, playlists</string>
     <string name="d_autoplay_wont_suggest_a_song_already_played_or_suggested">A reprodução automática não sugerirá uma música já tocada ou sugerida nesta sessão</string>
@@ -18,7 +18,7 @@
     <string name="d_close_up_next">Fechar A seguir</string>
     <string name="d_closing_the_window_leaves_bitchord_in_the_tray_instead_o">Fechar a janela deixa o BitChord na bandeja em vez de sair</string>
     <string name="d_continue_playing">Continuar tocando</string>
-    <string name="d_custom_module">Módulo personalizado</string>
+    <string name="d_custom_module">Addon personalizado</string>
     <string name="d_discord_rich_presence_last_fm_and_listenbrainz">Rich Presence do Discord, Last.fm e ListenBrainz</string>
     <string name="d_dont_repeat_songs_in_current_session">Não repetir músicas nesta sessão</string>
     <string name="d_downloaded_songs_will_appear_here">As músicas baixadas aparecerão aqui.</string>
@@ -28,19 +28,19 @@
     <string name="d_found_on_your_listenbrainz_profile_under_settings">Encontrado no seu perfil do ListenBrainz, em Configurações.</string>
     <string name="d_google_signs_in_inside_a_browser">O Google faz login pelo navegador e retorna uma sessão. Escolha um navegador em que você já esteja conectado e o BitChord usará essa sessão.</string>
     <string name="d_keep_playing_when_closed">Continuar tocando ao fechar</string>
-    <string name="d_keep_the_music_going_with_similar_songs">Mantém a música tocando com faixas semelhantes</string>
+    <string name="d_keep_the_music_going_with_similar_songs">Mantenha a música tocando com faixas semelhantes</string>
     <string name="d_keeps_the_spotlight_on_the_current_line">Mantém o destaque na linha atual</string>
     <string name="d_listening_shape">Perfil de escuta</string>
     <string name="d_looking_for_browsers">Procurando navegadores…</string>
     <string name="d_lyrics_aren_t_available_for_this_song">A letra não está disponível para esta música</string>
     <string name="d_lyrics_available_click_to_view">Letra disponível • Clique para ver</string>
     <string name="d_lyrics_unavailable">Letra indisponível</string>
-    <string name="d_mix_the_order_of_the_current_queue">Embaralha a ordem da fila atual</string>
-    <string name="d_module_source">Fonte de módulos</string>
+    <string name="d_mix_the_order_of_the_current_queue">Embaralhe a ordem da fila atual</string>
+    <string name="d_module_source">Fonte de addon</string>
     <string name="d_music">MÚSICA</string>
     <string name="d_my_music_source">Minha fonte de música</string>
     <string name="d_name_optional">Nome (opcional)</string>
-    <string name="d_new_music_moods_and_discoveries">Música nova, ambientes e descobertas</string>
+    <string name="d_new_music_moods_and_discoveries">Músicas novas, humores e descobertas</string>
     <string name="d_no_browser_profile_was_found_on_this_machine">Não foi encontrado nenhum perfil de navegador nesta máquina.</string>
     <string name="d_no_downloads">Sem downloads</string>
     <string name="d_nobody_is_signed_in">Ninguém está conectado. Sua biblioteca, playlists e histórico precisam de uma conta do YouTube Music.</string>
@@ -52,14 +52,14 @@
     <string name="d_playback_speed">Velocidade de reprodução</string>
     <string name="d_playlists_on_this_computer">Playlists neste computador</string>
     <string name="d_quit_bitchord">Sair do BitChord</string>
-    <string name="d_recently_played_on_this_computer">Ouvido recentemente neste computador</string>
+    <string name="d_recently_played_on_this_computer">Reproduzidas recentemente neste computador</string>
     <string name="d_recents">Recentes</string>
     <string name="d_remove_from_playlist">Remover da playlist</string>
     <string name="d_repeat">Repetir</string>
     <string name="d_scroll_left">Rolar para a esquerda</string>
     <string name="d_scroll_right">Rolar para a direita</string>
     <string name="d_search_your_music">Pesquise nas suas músicas</string>
-    <string name="d_shorten_long_gaps_rather_than_playing_them_out">Encurta as pausas longas em vez de reproduzi-las por inteiro</string>
+    <string name="d_shorten_long_gaps_rather_than_playing_them_out">Encurte as pausas longas em vez de reproduzi-las por inteiro</string>
     <string name="d_show_bitchord_in_the_system_tray_with_playback_controls">Mostrar o BitChord na bandeja do sistema com controles de reprodução</string>
     <string name="d_show_motion_artwork_when_it_is_available">Mostrar a capa animada quando estiver disponível</string>
     <string name="d_sign_in_to_last_fm">Entrar no Last.fm</string>
@@ -87,6 +87,6 @@
     <string name="d_show_original">Original</string>
     <string name="d_translating">Traduzindo</string>
     <string name="d_translation_unavailable">Tradução indisponível</string>
-    <string name="d_what_the_translate_button_translates_into">Para qual idioma o botão de traduzir da letra traduz</string>
+    <string name="d_what_the_translate_button_translates_into">Para qual idioma o botão de traduzir converte a letra</string>
     <string name="d_off">Desligado</string>
 </resources>
