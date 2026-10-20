@@ -4,17 +4,26 @@
 
 BitChord features an intelligent multi-tiered audio engine that dynamically upgrades tracks during playback ("second look") to the highest available fidelity (FLAC 16-bit / 24-bit via LosslessBridge: Qobuz, Tidal, Deezer, JioSaavn).
 
-On **BitChord TV** (Android TV / Fire TV), tracks played from YouTube playlists (e.g., *Pop Gold*) were failing to upgrade and remained permanently on lossy YouTube Opus (48 kHz / 129 kbps).
+In this BitChord TV build:
+- **Prebuilt Lossless Addon & Sources:** The lossless addon integration is **completely prebuilt directly into the application**. Users do **not** need to manually add, import, install, or configure any external addons, URLs, or source modules for lossless playback.
+- **The Issue on TV:** Even with lossless sources prebuilt and available, tracks played from YouTube playlists (e.g., *Pop Gold*) on **BitChord TV** (Android TV / Fire TV) failed to upgrade and remained permanently on lossy YouTube Opus (48 kHz / 129 kbps).
 
 Through in-depth reverse-engineering and source inspection, we identified **4 structural gates** in the upstream code that hard-blocked video streams and TV playback from initiating or completing quality upgrades. 
 
 After removing these restrictions:
-- **Verified Working**: *"Love Me Like You Do (Official Video)"* by Ellie Goulding (`mediaId=AJtDXIazrMo`) upgraded seamlessly from YouTube Opus to **Lossless FLAC (16-bit / 44.1 kHz · Qobuz)** with live stream swap and player UI badges updating on the Fire TV Stick (`192.168.1.166:5555`).
+- **Verified Working**: *"Love Me Like You Do (Official Video)"* by Ellie Goulding (`mediaId=AJtDXIazrMo`) upgraded seamlessly from YouTube Opus to **Lossless FLAC (16-bit / 44.1 kHz · Qobuz)** with live stream swap and player UI badges updating on the Fire TV Stick (`192.168.1.166:5555`), with zero manual addon setup required.
 - **Remaining Limitation**: Tracks with extended cinematic visual intros/outros (such as *"Diamonds"* by Rihanna and *"Love Yourself (PURPOSE : The Movement)"* by Justin Bieber) do not upgrade due to strict duration drift safeguards designed to protect audio sync.
 
 ---
 
-## 2. Identified Upstream Gates & Fixes
+## 2. Prebuilt Zero-Config Architecture
+
+- **No Manual Configuration:** The user does not need to enter addon URLs, install plugins, or adjust module endpoints. The app ships with the lossless provider wired directly into `SourceRegistry`.
+- **Autonomous Second Look:** Once the application boots and plays a stream, `QualityUpgrade` and `SourceResolver` automatically query the prebuilt source in the background without user intervention.
+
+---
+
+## 3. Identified Upstream Gates & Fixes
 
 ### Gate 1: Music Video URI Marker Check (`QualityUpgrade.couldStillUpgrade`)
 - **Location:** `app/src/main/java/com/music/bitchord/playback/QualityUpgrade.kt` (`couldStillUpgrade`)
@@ -72,12 +81,12 @@ After removing these restrictions:
   ): SourceStream? {
       if (target.title.isBlank() || target.durationSec == null || target.isVideo) return null
   ```
-  Even if a video track survived into `QualityUpgrade.lookAgain`, `SourceResolver.upgradeFor` unconditionally returned `null` for any `target.isVideo == true`, completely preventing LosslessBridge or other modules from querying lossless streams.
+  Even if a video track survived into `QualityUpgrade.lookAgain`, `SourceResolver.upgradeFor` unconditionally returned `null` for any `target.isVideo == true`, completely preventing the prebuilt lossless provider from querying lossless streams.
 - **Fix:** Removed `|| target.isVideo` check in `upgradeFor`.
 
 ---
 
-## 3. Analysis: Why "Diamonds" & "Love Yourself" Do Not Upgrade Yet
+## 4. Analysis: Why "Diamonds" & "Love Yourself" Do Not Upgrade Yet
 
 While *"Love Me Like You Do"* upgraded cleanly to FLAC, tracks like *"Diamonds"* and *"Love Yourself"* in the *Pop Gold* playlist remain on YouTube Opus.
 
