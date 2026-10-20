@@ -200,4 +200,11 @@
     <string name="search_library_empty">Pesquise as músicas da sua pasta de Música local.</string>
     <string name="search_library_hint">Músicas, artistas e álbuns</string>
     <string name="search_library_no_results">Nada na Música local corresponde a “%1$s”.</string>
+    <string name="search_addons_hint">Pesquisar seus addons</string>
+    <string name="watch_output_subtitle">Reproduzir no alto-falante ou fones do relógio</string>
+    <string name="watch_output">Relógio</string>
+    <string name="search_addons_no_results">Nenhum addon possui “%1$s”.</string>
+    <string name="search_addons_empty">Pesquise em todos os addons ativados de uma vez. As faixas são reproduzidas direto do addon.</string>
+    <string name="previously_played">Reproduzido anteriormente</string>
+    <string name="sign_in_with_google">Fazer login com o Google</string>
 </resources>
