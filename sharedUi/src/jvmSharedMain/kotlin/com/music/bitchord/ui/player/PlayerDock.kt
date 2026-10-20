@@ -39,6 +39,24 @@ class PlayerDock {
     private var miniArt: LayoutCoordinates? = null
     private var miniArtCorner: Dp = 8.dp
 
+    // The whole bar, not just its artwork: the modal above it must be able to
+    // recognise a press meant to reopen the player while it is closing.
+    private var miniPlayer: LayoutCoordinates? = null
+
+    fun reportMiniPlayer(coordinates: LayoutCoordinates) {
+        miniPlayer = coordinates
+    }
+
+    fun releaseMiniPlayer(coordinates: LayoutCoordinates) {
+        if (miniPlayer === coordinates) miniPlayer = null
+    }
+
+    fun containsMiniPlayer(screenPosition: Offset): Boolean {
+        val coordinates = miniPlayer?.takeIf { it.isAttached } ?: return false
+        val local = coordinates.screenToLocal(screenPosition)
+        return Rect(Offset.Zero, coordinates.size.toSize()).contains(local)
+    }
+
     /**
      * How far the player sheet sits below fully open, in pixels. Set by the
      * host while the sheet is up, null while it is not. `NaN` before the sheet

@@ -278,6 +278,7 @@ import androidx.media3.common.Player
 import com.music.bitchord.data.YtMusicRepository
 import com.music.bitchord.ui.player.NowPlayingScreen
 import com.music.bitchord.ui.player.PlayerSheetMotion
+import com.music.bitchord.ui.player.reopenClosingPlayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.window.DialogWindowProvider
@@ -3951,37 +3952,46 @@ private fun BitChordApp(
                 }
                 Box(
                     Modifier
-                        // Where the app is holding the player, if it is — see
-                        // [PlayerSheetMotion.contentOffsetPx]. Placement only.
-                        .offset { IntOffset(0, playerSheetMotion.contentOffsetPx()) }
-                        // The dim behind the player, from the window's top to
-                        // its bottom whatever the player's offset, and as deep
-                        // as the player is open.
-                        .drawBehind {
-                            val open = playerDock.openFraction()
-                            // Not at all under a portrait player that is fully up:
-                            // its own background is opaque, and a full-screen
-                            // blend behind it is paid on every frame the window
-                            // draws for nothing anyone can see.
-                            if (!reducePlayerMotion && open > 0f && !(open >= 1f && playerDock.attached)) {
-                                val top = playerSheetMotion.position().takeUnless { it.isNaN() } ?: 0f
-                                drawRect(
-                                    color = Color.Black.copy(alpha = PLAYER_SCRIM_ALPHA * open),
-                                    topLeft = Offset(0f, -top.toInt().toFloat()),
-                                    size = Size(size.width, size.height),
-                                )
-                            }
-                        }
-                        .guardSheetFromContentTouches(nowPlayingSheetState)
-                        // The sheet fills the window, so its height is the
-                        // whole of its travel: hidden sits that far down.
-                        .onSizeChanged {
-                            playerDock.sheetTravel = it.height.toFloat()
-                            playerSheetMotion.laidOut = true
-                        },
+                        .fillMaxSize()
+                        .then(
+                            if (reducePlayerMotion) Modifier else
+                                Modifier.reopenClosingPlayer(playerSheetMotion, playerDock),
+                        ),
                 ) {
-                    CompositionLocalProvider(LocalPlayerDock provides activeDock) {
-                        nowPlaying(playerSong)
+                    Box(
+                        Modifier
+                            // Where the app is holding the player, if it is — see
+                            // [PlayerSheetMotion.contentOffsetPx]. Placement only.
+                            .offset { IntOffset(0, playerSheetMotion.contentOffsetPx()) }
+                            // The dim behind the player, from the window's top to
+                            // its bottom whatever the player's offset, and as deep
+                            // as the player is open.
+                            .drawBehind {
+                                val open = playerDock.openFraction()
+                                // Not at all under a portrait player that is fully up:
+                                // its own background is opaque, and a full-screen
+                                // blend behind it is paid on every frame the window
+                                // draws for nothing anyone can see.
+                                if (!reducePlayerMotion && open > 0f && !(open >= 1f && playerDock.attached)) {
+                                    val top = playerSheetMotion.position().takeUnless { it.isNaN() } ?: 0f
+                                    drawRect(
+                                        color = Color.Black.copy(alpha = PLAYER_SCRIM_ALPHA * open),
+                                        topLeft = Offset(0f, -top.toInt().toFloat()),
+                                        size = Size(size.width, size.height),
+                                    )
+                                }
+                            }
+                            .guardSheetFromContentTouches(nowPlayingSheetState)
+                            // The sheet fills the window, so its height is the
+                            // whole of its travel: hidden sits that far down.
+                            .onSizeChanged {
+                                playerDock.sheetTravel = it.height.toFloat()
+                                playerSheetMotion.laidOut = true
+                            },
+                    ) {
+                        CompositionLocalProvider(LocalPlayerDock provides activeDock) {
+                            nowPlaying(playerSong)
+                        }
                     }
                 }
             }

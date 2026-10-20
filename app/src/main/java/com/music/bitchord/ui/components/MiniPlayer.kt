@@ -338,6 +338,20 @@ internal fun Modifier.playerDockArt(dock: PlayerDock?, corner: Dp): Modifier {
         .graphicsLayer { alpha = if (dock.coversMiniArt) 0f else 1f }
 }
 
+/** The expand target, also reachable through the modal during a close. */
+@Composable
+internal fun Modifier.playerDockTarget(dock: PlayerDock?): Modifier {
+    if (dock == null) return this
+    val placed = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    DisposableEffect(dock) {
+        onDispose { placed[0]?.let(dock::releaseMiniPlayer) }
+    }
+    return onPlaced { coordinates ->
+        placed[0] = coordinates
+        dock.reportMiniPlayer(coordinates)
+    }
+}
+
 /** Frosted mini player that rides just above the floating tab bar. */
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
@@ -398,6 +412,7 @@ fun MiniPlayer(
             // Deliberately silent: the whole bar is the target, so it catches
             // stray taps meant for the page behind it, and the sheet rising is
             // its own confirmation. The glyphs on it still buzz.
+            .playerDockTarget(dock)
             .clickable(onClick = onExpand),
     ) {
         Row(

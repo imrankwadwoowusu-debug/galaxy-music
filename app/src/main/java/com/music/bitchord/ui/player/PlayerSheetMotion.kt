@@ -119,7 +119,8 @@ class PlayerSheetMotion(
      * pressed twice, say — restarted the slide from a standstill where it
      * stood, a visible stall halfway home.
      */
-    private var closing = false
+    var closing by mutableStateOf(false)
+        private set
 
     private fun travel(): Float =
         dock.sheetTravel.takeIf { it > 0f } ?: (windowInfo?.containerSize?.height ?: 0).toFloat()
@@ -169,19 +170,25 @@ class PlayerSheetMotion(
 
     /** A tap on the mini player. */
     fun open() {
-        if (shown()) return
+        val reopening = shown() && closing
+        if (shown() && !reopening) return
+        val from = if (reopening) position().takeUnless { it.isNaN() } ?: travel() else travel()
         settle?.cancel()
         closing = false
-        val travel = travel()
-        held = travel
+        held = from
         // Raised already open: [held] is what slides it up.
         setShown(true)
         settle = scope.launch {
             // The sheet's window takes a frame or two to exist. Started before
             // then, the first stretch of the slide would happen to nothing.
-            withTimeoutOrNull(LAYOUT_WAIT_MS) { snapshotFlow { laidOut }.first { it } }
-            slide(from = travel, to = 0f)
+            if (!reopening) {
+                withTimeoutOrNull(LAYOUT_WAIT_MS) { snapshotFlow { laidOut }.first { it } }
+            }
+            slide(from = from, to = 0f)
             held = Float.NaN
+            // close() disabled the window's exit animation. No new window is
+            // attached on a reversal, so restore it here for other dismissals.
+            if (reopening) window?.setWindowAnimations(windowAnimations)
         }
     }
 
@@ -236,6 +243,10 @@ class PlayerSheetMotion(
     }
 
     override fun drag(delta: Float) {
+        if (closing) {
+            pullStartAt = held
+            pullStartNanos = System.nanoTime()
+        }
         if (!holding) {
             // Only upwards starts one, and only from a closed player: a
             // downward drag on the bar has nothing to pull.
@@ -248,6 +259,7 @@ class PlayerSheetMotion(
             setShown(true)
         }
         settle?.cancel()
+        closing = false
         held = (held + delta).coerceIn(0f, travel())
     }
 
@@ -263,8 +275,8 @@ class PlayerSheetMotion(
         // A flick decides on its own, either way; otherwise it is where the
         // finger left it.
         val open = if (flick) speed < 0f else held < travel / 2f
+        closing = !open
         if (!open) {
-            closing = true
             quietWindow()
         }
         val from = held

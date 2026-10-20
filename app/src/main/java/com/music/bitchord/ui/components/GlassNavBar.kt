@@ -344,6 +344,7 @@ private fun GlassNowPlaying(
                 scaleY = pressScale
             }
             .then(modifier)
+            .playerDockTarget(dock)
             .clickable(
                 interactionSource = pressSource,
                 indication = null,
