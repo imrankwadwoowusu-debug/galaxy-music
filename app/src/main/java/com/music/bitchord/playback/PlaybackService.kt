@@ -1529,8 +1529,7 @@ class PlaybackService : MediaLibraryService() {
                 // Only substituted, non-lossless choices need this. A pinned
                 // YouTube URL has no source result to promote, and a lossless
                 // module result already satisfies the request.
-                if (StreamChoice.isSubstitute(videoId) &&
-                    serving.format.isLossless != true &&
+                if (serving.format.isLossless != true &&
                     QualityUpgrade.couldStillUpgrade(videoId, dataSpec.uri)
                 ) {
                     val pending = QualityUpgrade.settledForLess(

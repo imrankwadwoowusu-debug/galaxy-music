@@ -390,7 +390,7 @@ object SourceResolver {
         playing: StreamFormat? = null,
         servedBy: String? = null,
     ): SourceStream? {
-        if (target.title.isBlank() || target.durationSec == null || target.isVideo) return null
+        if (target.title.isBlank() || target.durationSec == null) return null
         val request = requestForNow()
         val active = SourceRegistry.activeForPlayback()
         val youtube = active.firstOrNull { it.kind == SourceKind.YOUTUBE } ?: return null

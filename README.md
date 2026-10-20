@@ -51,6 +51,7 @@
 - **Offline downloads** — save tracks with embedded metadata.
 - **Local music library** integration.
 - **Background playback** via a proper foreground media session.
+- **BitChord TV & Android TV** — Leanback interface with lossless audio upgrade support for TV music video playlists (see [ISSUES.md](ISSUES.md)).
 - **Apple-like lyrics animation** — credit to [binimum](https://github.com/binimum/am-lyrics).
 
 #### Connectivity & Accounts
