@@ -807,8 +807,17 @@ object TrackMatcher {
         return abs(actualSec - expectedSec) > DURATION_LIMIT_SEC
     }
 
-    /** Visual intros/outros can make the video substantially longer than its audio master. */
-    private const val VIDEO_DURATION_LIMIT_SEC = 90
+    /**
+     * Visual intros/outros can make the video substantially longer than its audio master.
+     *
+     * Internal (not private) so [SourceResolver] can apply the same 90-second ceiling in
+     * the upgrade path — both the [SourceResolver.matchAndStream] strict-length filter and
+     * [SourceResolver.sameRecordingAs] need this same constant for video-origin targets.
+     * Tracks like "Diamonds" (Rihanna, 283s video / 225s FLAC) and "Love Yourself"
+     * (Justin Bieber, 272s video / 233s FLAC) have drifts of 58s and 39s respectively —
+     * both below this ceiling and both rejected by the old UPGRADE_DRIFT_SEC = 2 guard.
+     */
+    internal const val VIDEO_DURATION_LIMIT_SEC = 90
 
     private const val BRACKET_PASSES = 3
     private const val DASH_PASSES = 3

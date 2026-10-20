@@ -464,7 +464,7 @@ object QualityUpgrade {
                 val late = runCatching { lookup.await() }.getOrNull()
                 if (late != null &&
                     SourceResolver.worthSwapping(late.format, waiting.playing) &&
-                    SourceResolver.sameRecordingAs(late.durationSec, effectiveDurationSec)
+                    SourceResolver.sameRecordingAs(late.durationSec, effectiveDurationSec, isVideoOrigin = waiting.target.isVideo)
                 ) {
                     found = late
                     if (needsLosslessFollowUp(late.format)) {

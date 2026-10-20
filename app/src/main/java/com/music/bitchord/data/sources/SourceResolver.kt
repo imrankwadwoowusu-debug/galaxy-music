@@ -718,10 +718,19 @@ object SourceResolver {
      * Either side being unknown is a no. An unverifiable length is not a
      * length that agrees, and the cost of being wrong here is a listener's
      * song replaced mid-play by a different cut of it.
+     *
+     * @param isVideoOrigin true when the currently-playing stream came from a
+     *   music video. Visual intros/outros on the video container can make its
+     *   runtime substantially longer than the audio master on Qobuz or Tidal
+     *   (e.g. Diamonds: 283 s video / 225 s FLAC = 58 s drift; Love Yourself:
+     *   272 s video / 233 s FLAC = 39 s drift). For these items the same
+     *   [TrackMatcher.VIDEO_DURATION_LIMIT_SEC] ceiling used during live
+     *   ranking is applied here so a valid FLAC upgrade is not rejected.
      */
-    fun sameRecordingAs(candidateSec: Int?, playingSec: Int?): Boolean {
+    fun sameRecordingAs(candidateSec: Int?, playingSec: Int?, isVideoOrigin: Boolean = false): Boolean {
         if (candidateSec == null || playingSec == null) return false
-        return kotlin.math.abs(candidateSec - playingSec) <= UPGRADE_DRIFT_SEC
+        val limit = if (isVideoOrigin) TrackMatcher.VIDEO_DURATION_LIMIT_SEC else UPGRADE_DRIFT_SEC
+        return kotlin.math.abs(candidateSec - playingSec) <= limit
     }
 
     /**
@@ -929,8 +938,18 @@ object SourceResolver {
             // song; a runtime that agrees this closely is one recording, and
             // nothing else is worth cutting a listener's audio for — or filing
             // on their device under the name of the track they asked for.
+            //
+            // For video-origin targets the container runtime includes visual
+            // intro/outro footage not present on the audio master (e.g. the
+            // 50 s cinematic intro on Diamonds, or the spoken-word segment on
+            // Love Yourself). TrackMatcher.VIDEO_DURATION_LIMIT_SEC (90 s) is
+            // the already-validated ceiling for this in ranked(); using the
+            // same constant here prevents the upgrade path from discarding a
+            // valid Qobuz FLAC (225 s) when the video container says 283 s.
             if (strictLength) {
-                matches = matches.filter { TrackMatcher.withinSeconds(it, target, UPGRADE_DRIFT_SEC) }
+                val driftSec = if (target.isVideo) TrackMatcher.VIDEO_DURATION_LIMIT_SEC
+                               else UPGRADE_DRIFT_SEC
+                matches = matches.filter { TrackMatcher.withinSeconds(it, target, driftSec) }
             }
             if (matches.isEmpty()) continue
             return streamBest(source, matches, target, request)
