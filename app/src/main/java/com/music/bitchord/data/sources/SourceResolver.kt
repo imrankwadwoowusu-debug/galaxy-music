@@ -325,16 +325,25 @@ object SourceResolver {
      * to YouTube, which is what the caller would have done anyway: nothing has
      * been pinned, so the ordinary resolve at playback time is untouched.
      */
-    suspend fun prefetchSubstitute(target: TrackMatcher.Target): SourceStream? {
-        if (target.title.isBlank() || target.isVideo) return null
+    suspend fun prefetchSubstitute(target: TrackMatcher.Target, videoId: String? = null): SourceStream? {
+        if (target.title.isBlank()) return null
         val active = SourceRegistry.activeForPlayback()
         val youtube = active.firstOrNull { it.kind == SourceKind.YOUTUBE } ?: return null
-        val quick = rankedAbove(youtube.configId, active).filter { it.kind.worthPrefetching }
-        if (quick.isEmpty()) return null
-        val (source, stream) = bestAcross(quick, target, requestForNow()) ?: return null
+        val candidates = rankedAbove(youtube.configId, active).filter {
+            it.kind.worthPrefetching || it.kind.canServeLossless
+        }
+        if (candidates.isEmpty()) return null
+        val dur = target.durationSec
+        val enrichedTarget = if (dur == null || dur <= 0) {
+            val known = videoId?.let { KnownTrackDurations.get(it) }
+            if (known != null && known > 0) target.copy(durationSec = known) else target
+        } else {
+            target
+        }
+        val (source, stream) = bestAcross(candidates, enrichedTarget, requestForNow()) ?: return null
         TrackLog.d(
             TAG,
-            "warmed: '${target.title}' from ${source.displayName} at ${stream.format.summary}",
+            "warmed: '${enrichedTarget.title}' from ${source.displayName} at ${stream.format.summary}",
         )
         return stream
     }
