@@ -154,6 +154,40 @@ After removing all restrictions:
 
 ---
 
+---
+
+### Gate 6: Post-Swap Duration Verification Leniency (`PlaybackService.watchUpgrade`)
+- **Location:** `app/src/main/java/com/music/bitchord/playback/PlaybackService.kt` (`watchUpgrade` and `auditionVerdict`)
+- **Root Cause:**
+  After passing `TrackMatcher.withinSeconds()` and `SourceResolver.sameRecordingAs()`, the stream was loaded into ExoPlayer. During audition and after the swap, `auditionVerdict` and `watchUpgrade()` performed a final duration agreement check:
+  ```kotlin
+  if (now > 0) return@withTimeoutOrNull abs(now - previousDuration) <= upgradeLengthSlackMs
+  ```
+  `upgradeLengthSlackMs` defaults to only 3 seconds (`3_000L`). When "Diamonds" (58s difference between video and audio track) or "Love Yourself" (39s difference) completed the swap, `watchUpgrade` saw `58s > 3s`, flagged a mismatch, and reverted the playback item back to YouTube Opus:
+  ```
+  upgrade reverted: replacement reports 225000ms against 283000ms (state=READY, buffered=...)
+  ```
+- **Fix:** Updated both `auditionVerdict` and `watchUpgrade` to compute `maxSlackMs = if (isVideoOrigin) TrackMatcher.VIDEO_DURATION_LIMIT_SEC * 1_000L else upgradeLengthSlackMs`. Video-origin streams now use the 90-second leniency across the entire lifecycle, preventing false reverts.
+
+---
+
+### Gate 7: Out-of-the-Box Prebaked Addons in `SourceRegistry.kt`
+- **Location:** `app/src/main/java/com/music/bitchord/data/sources/SourceRegistry.kt`
+- **Root Cause:**
+  In a fresh open-source build, `SourceRegistry.kt` only registered built-in kinds `JIOSAAVN` and `YOUTUBE`. With `canSubstituteForYouTube()` checking whether YouTube was placed after active replacement sources, the condition failed (`index == 0`), disabling all upgrade checks.
+- **Fix:** Seeded `PREBAKED_SOURCES` (Lossless Bridge, Qobuz, Deezer, and GGLOS addons) directly into `SourceRegistry.kt` during initialisation (`sourcesForInit`). They are assigned `rank = 0` (user/addon tier) ahead of YouTube (`rank = 3`), enabling out-of-the-box lossless resolution without requiring manual setup on Android TV or mobile.
+
+---
+
+### Additional Platform Stability & Performance Fixes
+
+1. **Android Regex Crash Fix (`TrackMatcher.kt`):**
+   - Corrected double-escaped POSIX character class regex `"""(\p{Ll})(\p{Lu})"""` to `"""(\p{Ll})(\p{Lu})"""` to prevent `PatternSyntaxException` on Android runtime when matching camelCase titles.
+2. **Update Dialog Silencing (`tv/build.gradle.kts`):**
+   - Synced TV application `versionName` (`1.8.1`) and `versionCode` (`28`) with the root project version, preventing redundant "BitChord 1.8.1 is available" update prompts on TV launch.
+3. **Instant Home Feed Disk Cache (`HomeFeedCache.kt`):**
+   - Added instant offline disk cache in `context.cacheDir` for the TV Home feed, enabling cold load times under 15ms.
+
 ## 4. Complete Track Status
 
 | Track | Before | After |

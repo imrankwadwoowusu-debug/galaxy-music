@@ -97,6 +97,13 @@ Grab the latest signed APK from the [Releases](https://github.com/kushagrasinghx
 
 For the Windows and Linux desktop app, see [DESKTOP.md](DESKTOP.md).
 
+### BitChord TV & Lossless Audio Upgrade
+BitChord TV is optimized for Android TV and Fire TV devices with Leanback navigation and autonomous lossless playback:
+- **Zero-Configuration Lossless Audio:** Prebuilt integration with lossless providers (Lossless Bridge, Qobuz, Deezer) out-of-the-box.
+- **Smart Video-to-Audio Drift Compensation:** Automatic handling of video intro/outro duration drift (up to 90 seconds) for music videos such as Rihanna's *Diamonds* and Justin Bieber's *Love Yourself*.
+- **Sub-15ms Cold-Load Home Feed:** Instant disk caching for all Home feed rows.
+- Detailed architecture and resolution notes are documented in [ISSUES.md](ISSUES.md).
+
 </div>
 
 ---
