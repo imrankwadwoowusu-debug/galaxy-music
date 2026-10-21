@@ -1171,6 +1171,12 @@ class PlaybackService : MediaLibraryService() {
             publishNerdStats()
             currentAudioInputFormat = format
             applyOutputRoute()
+            this@PlaybackService.player?.let { p ->
+                val id = eventTime.mediaId()
+                if (id != null && QualityUpgrade.couldStillUpgrade(id, p.currentMediaItem?.localConfiguration?.uri)) {
+                    lookForBetterCopy(p)
+                }
+            }
         }
 
         /**
@@ -1188,6 +1194,7 @@ class PlaybackService : MediaLibraryService() {
         ) {
             val cutAt = swapCutAt ?: return
             swapCutAt = null
+            publishNerdStats()
             TrackLog.d(
                 "BitChord",
                 "swap seam: ${SystemClock.elapsedRealtime() - cutAt}ms of silence",
@@ -1204,6 +1211,7 @@ class PlaybackService : MediaLibraryService() {
         override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
             val cutAt = swapCutAt ?: return
             if (state == Player.STATE_READY) {
+                publishNerdStats()
                 TrackLog.d(
                     "BitChord",
                     "swap leg: ready ${SystemClock.elapsedRealtime() - cutAt}ms after the cut",
@@ -4255,7 +4263,7 @@ class PlaybackService : MediaLibraryService() {
             // a null. It is genuinely not known yet at some of the moments
             // this is called from: a queue advance runs its transition before
             // the item it moved onto has finished preparing.
-            val playingSeconds = withTimeoutOrNull(DURATION_SETTLE_MS) {
+            val playingSeconds = withTimeoutOrNull(2_000L) {
                 while (true) {
                     val ms = withContext(Dispatchers.Main) {
                         this@PlaybackService.player
@@ -4267,7 +4275,7 @@ class PlaybackService : MediaLibraryService() {
                     delay(UPGRADE_PROVE_STEP_MS)
                 }
                 @Suppress("UNREACHABLE_CODE") null
-            }
+            } ?: (uri?.let { SourceResolver.targetIn(it).durationSec })
             // Re-asked rather than carried down from above, because the wait
             // is long enough for the answer to have changed: the resolver runs
             // on the loader thread and marks a track pending as it opens the
@@ -4388,10 +4396,17 @@ class PlaybackService : MediaLibraryService() {
      *   bitrate. See [cachedFloor].
      */
     private suspend fun adoptCachedTrack(mediaId: String, uri: Uri, durationSec: Int?): Boolean {
-        val format = withContext(Dispatchers.Main) {
-            player
-                ?.takeIf { it.currentMediaItem?.mediaId == mediaId && audioFormatFor == mediaId }
-                ?.audioFormat
+        val format = withTimeoutOrNull(2_000L) {
+            while (true) {
+                val f = withContext(Dispatchers.Main) {
+                    player
+                        ?.takeIf { it.currentMediaItem?.mediaId == mediaId && audioFormatFor == mediaId }
+                        ?.audioFormat
+                }
+                if (f != null && f.sampleMimeType != null) return@withTimeoutOrNull f
+                delay(UPGRADE_PROVE_STEP_MS)
+            }
+            @Suppress("UNREACHABLE_CODE") null
         } ?: return false
         val mime = format.sampleMimeType ?: return false
         val videoId = uri.getQueryParameter("v") ?: return false
@@ -4656,6 +4671,7 @@ class PlaybackService : MediaLibraryService() {
             NerdStats.recordSource(mediaId, upgradedSourceName)
             player.seekTo(player.currentMediaItemIndex, now.position)
             player.prepare()
+            publishNerdStats()
             QualityUpgrade.unshelve(mediaId)
             TrackLog.d("BitChord", "upgraded to ${stream.format.summary} at ${now.position}ms ($upgradedSourceName)")
             val isVideoOrigin = now.item.isVideoOrigin || SourceResolver.targetIn(Uri.parse(now.uri)).isVideo
@@ -8796,7 +8812,7 @@ class PlaybackService : MediaLibraryService() {
          * delayed — and it applies only where a transition actually ran, so the
          * ordinary swap, minutes from any blend, is as immediate as it was.
          */
-        const val UPGRADE_AFTER_CROSSFADE_MS = 5_000L
+        const val UPGRADE_AFTER_CROSSFADE_MS = 1_200L
 
         /**
          * How long a replacement gets to report a length before it is
