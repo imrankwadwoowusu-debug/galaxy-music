@@ -66,9 +66,9 @@ class TvActivity : ComponentActivity() {
         MusicLink.consume(intent)
     }
 
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        // Fire TV Home button pressed - close app completely and free all memory
+    override fun onStop() {
+        super.onStop()
+        // Fire TV Home button pressed or navigated away - close app and free memory
         exitAndFreeMemory()
     }
 
