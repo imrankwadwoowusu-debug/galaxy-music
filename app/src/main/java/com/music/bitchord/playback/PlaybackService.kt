@@ -4271,7 +4271,11 @@ class PlaybackService : MediaLibraryService() {
                             ?.duration
                             ?: 0L
                     }
-                    if (ms > 0) return@withTimeoutOrNull (ms / 1000).toInt()
+                    if (ms > 0) {
+                        val sec = (ms / 1000).toInt()
+                        com.music.bitchord.data.sources.KnownTrackDurations.put(mediaId, sec)
+                        return@withTimeoutOrNull sec
+                    }
                     delay(UPGRADE_PROVE_STEP_MS)
                 }
                 @Suppress("UNREACHABLE_CODE") null

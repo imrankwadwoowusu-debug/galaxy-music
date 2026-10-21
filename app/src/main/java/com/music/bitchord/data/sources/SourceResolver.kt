@@ -145,14 +145,19 @@ object SourceResolver {
      * loader thread with nothing but a DataSpec in hand — see
      * [toMediaItem][com.music.bitchord.playback.toMediaItem].
      */
-    fun targetIn(uri: Uri) = TrackMatcher.Target(
-        title = uri.getQueryParameter("n").orEmpty(),
-        artist = uri.getQueryParameter("a").orEmpty(),
-        durationSec = uri.getQueryParameter("d")?.toIntOrNull(),
-        album = uri.getQueryParameter("l"),
-        isExplicit = uri.getQueryParameter("e")?.let { it == "1" },
-        isVideo = uri.getQueryParameter("m") == "1",
-    )
+    fun targetIn(uri: Uri): TrackMatcher.Target {
+        val videoId = uri.getQueryParameter("v")
+        val dur = uri.getQueryParameter("d")?.toIntOrNull()
+            ?: videoId?.let { KnownTrackDurations.get(it) }
+        return TrackMatcher.Target(
+            title = uri.getQueryParameter("n").orEmpty(),
+            artist = uri.getQueryParameter("a").orEmpty(),
+            durationSec = dur,
+            album = uri.getQueryParameter("l"),
+            isExplicit = uri.getQueryParameter("e")?.let { it == "1" },
+            isVideo = uri.getQueryParameter("m") == "1",
+        )
+    }
 
     /**
      * @param target is what a cross-source match is made on. Without it the
