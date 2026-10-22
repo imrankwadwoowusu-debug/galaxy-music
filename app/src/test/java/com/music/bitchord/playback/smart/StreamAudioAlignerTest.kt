@@ -150,4 +150,42 @@ class StreamAudioAlignerTest {
         // Different URL for same mediaId is not cached
         assertNull(StreamAudioAligner.getCachedOffsetMs(mediaId, "https://other.com/stream.m4a"))
     }
+
+    @Test
+    fun `high-resolution 2ms hop resolves sub-10ms offset (+23ms within 3ms)`() {
+        assertEquals(2.0, StreamAudioAligner.HOP_MS, 0.001)
+        assertEquals(10.0, StreamAudioAligner.WIN_MS, 0.001)
+
+        val sampleRate = 44100.0
+        val durationSec = 10.0
+        val totalSamples = (sampleRate * durationSec).toInt()
+        val pulseTimes = doubleArrayOf(1.0, 2.3, 3.7, 5.1, 6.8, 8.2)
+        fun isPulse(t: Double): Boolean = pulseTimes.any { pt -> t >= pt && t < pt + 0.03 }
+
+        val baseSignal = FloatArray(totalSamples) { i ->
+            val t = i / sampleRate
+            if (isPulse(t)) sin(2.0 * PI * 660.0 * t).toFloat() else 0f
+        }
+        val offsetMs = 23L
+        val offsetSamples = ((offsetMs / 1000.0) * sampleRate).toInt()
+        val targetSignal = FloatArray(totalSamples) { i ->
+            val srcIndex = i - offsetSamples
+            if (srcIndex in baseSignal.indices) baseSignal[srcIndex] else 0f
+        }
+
+        val (measuredOffsetMs, confidence) = StreamAudioAligner.computeOffsetFromSignals(
+            sourceSamples = baseSignal,
+            sourceSampleRate = sampleRate,
+            sourceStartSec = 0.0,
+            targetSamples = targetSignal,
+            targetSampleRate = sampleRate,
+            targetStartSec = 0.0,
+        )
+
+        assertTrue("Confidence must exceed 0.40 (got $confidence)", confidence >= 0.40)
+        assertTrue(
+            "Expected +23ms ± 3ms with 2ms hop, got ${measuredOffsetMs}ms",
+            abs(measuredOffsetMs - 23L) <= 3L,
+        )
+    }
 }

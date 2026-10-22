@@ -139,6 +139,7 @@ import com.music.bitchord.data.sources.SourceStream
 import com.music.bitchord.data.sources.StreamFormat
 import com.music.bitchord.data.sources.TrackMatcher
 import com.music.bitchord.playback.smart.AutomixAnalysisSource
+import com.music.bitchord.playback.smart.StreamAudioAligner
 import com.music.bitchord.playback.smart.VersionAudioAligner
 import com.music.bitchord.widget.MediaWidget
 import com.music.bitchord.widget.MediaWidgetSnapshot
@@ -4547,8 +4548,23 @@ class PlaybackService : MediaLibraryService() {
         // reaches its bytes through the same resolving data source the real one
         // does, and that is where a marked URI is turned back into a stream.
         QualityUpgrade.force(mediaId, stream)
+        val alignJob: Deferred<Long>? = if (AppSettings.smartSourceAlignment.value && AppSettings.smartVersionAlignment.value) {
+            val song = at.item.toSong()
+            scope.async(Dispatchers.IO) {
+                StreamAudioAligner.findStreamOffsetMs(
+                    context = this@PlaybackService,
+                    mediaId = mediaId,
+                    currentPosMs = at.position,
+                    currentSong = song,
+                    targetStreamUri = Uri.parse(upgradedUri),
+                )
+            }
+        } else {
+            null
+        }
         val warmedThrough = auditionUpgrade(mediaId, at, upgradedUri, stream, alreadyFilled)
         if (warmedThrough == null) {
+            alignJob?.cancel()
             // Nothing was cut, so there is nothing to put back: the listener
             // keeps the stream they already had and never learns this
             // happened. Which is the point — this is the failure that used to
@@ -4627,6 +4643,8 @@ class PlaybackService : MediaLibraryService() {
             }
         }
 
+        val offsetMs = alignJob?.await() ?: 0L
+
         withContext(Dispatchers.Main) {
             val now = swapPointFor(mediaId)
             if (crossfade?.isTransitioning() == true) {
@@ -4700,10 +4718,14 @@ class PlaybackService : MediaLibraryService() {
                 ?: "Upgrade"
             NerdStats.onSourceStream(mediaId, stream.format, upgradedSourceName)
             NerdStats.recordSource(mediaId, upgradedSourceName)
-            player.seekTo(player.currentMediaItemIndex, now.position)
+            val targetSeekPos = (now.position + offsetMs).coerceAtLeast(0L)
+            if (offsetMs != 0L) {
+                TrackLog.d("BitChord", "waveform alignment applied: offset=${offsetMs}ms, seeking to ${targetSeekPos}ms (raw=${now.position}ms)", about = mediaId)
+            }
+            player.seekTo(player.currentMediaItemIndex, targetSeekPos)
             player.prepare()
             QualityUpgrade.unshelve(mediaId)
-            TrackLog.d("BitChord", "upgraded to ${stream.format.summary} at ${now.position}ms ($upgradedSourceName)")
+            TrackLog.d("BitChord", "upgraded to ${stream.format.summary} at ${targetSeekPos}ms (offset=${offsetMs}ms, $upgradedSourceName)")
             watchUpgrade(mediaId, now.uri, now.position, now.duration, previousFormat)
             if (QualityUpgrade.continueAfterLossySwap(mediaId)) {
                 // The immediate JioSaavn improvement stays audible while a

@@ -25,8 +25,8 @@ object StreamAudioAligner {
 
     private const val TAG = "StreamAudioAligner"
 
-    const val HOP_MS = 10.0 // 100 fps energy envelopes
-    const val WIN_MS = 40.0 // 40ms RMS energy window
+    const val HOP_MS = 2.0 // 500 fps high-precision envelope
+    const val WIN_MS = 10.0 // 10ms transient window
     const val MIN_CONFIDENCE = 0.40 // Minimum normalized cross-correlation
     const val TIMEOUT_MS = 3000L // 3.0s deadline for alignment analysis
     const val ANALYSIS_WARM_BYTES = 1_500_000L // 1.5MB background pre-warm
@@ -185,7 +185,7 @@ object StreamAudioAligner {
                 if (sourceDecode == null || targetDecode == null ||
                     sourceDecode.first.samples.isEmpty() || targetDecode.first.samples.isEmpty()
                 ) {
-                    TrackLog.w(TAG, "PCM decoding failed for stream alignment on $mediaId")
+                    TrackLog.w(TAG, "PCM decoding failed for stream alignment on $mediaId: source=${sourceDecode?.first?.samples?.size} target=${targetDecode?.first?.samples?.size} (null = decoder/extractor failed, 0 = nothing cached in window)")
                     return@withContext 0L
                 }
 
@@ -216,7 +216,10 @@ object StreamAudioAligner {
                 StreamAudioSource.safeClose(targetDs)
             }
         }
-    } ?: 0L
+    } ?: run {
+        TrackLog.w(TAG, "Stream alignment timed out after ${TIMEOUT_MS}ms for $mediaId; fallback 0ms")
+        0L
+    }
 
     private fun openSourceDataSource(context: Context?, song: Song?): MediaDataSource? {
         if (song == null) return null
