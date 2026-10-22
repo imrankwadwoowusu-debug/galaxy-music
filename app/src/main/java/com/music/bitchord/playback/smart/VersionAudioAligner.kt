@@ -141,8 +141,8 @@ object VersionAudioAligner {
         val targetDs = openDataSource(context, targetSong)
 
         if (sourceDs == null || targetDs == null) {
-            safeClose(sourceDs)
-            safeClose(targetDs)
+            StreamAudioSource.safeClose(sourceDs)
+            StreamAudioSource.safeClose(targetDs)
             TrackLog.w(
                 TAG,
                 "Alignment for '${sourceSong.title}': no bytes on disk to measure against",
@@ -245,8 +245,8 @@ object VersionAudioAligner {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to compute audio alignment for ${sourceSong.videoId} -> ${targetSong.videoId}", e)
         } finally {
-            safeClose(sourceDs)
-            safeClose(targetDs)
+            StreamAudioSource.safeClose(sourceDs)
+            StreamAudioSource.safeClose(targetDs)
         }
 
         null
@@ -267,7 +267,7 @@ object VersionAudioAligner {
      * the same order when it declares the head ready, so what the wait calls
      * ready is what gets opened here.
      */
-    private fun openDataSource(context: Context, song: Song): MediaDataSource? {
+    internal fun openDataSource(context: Context, song: Song): MediaDataSource? {
         song.localUri?.let { local ->
             val uri = Uri.parse(local)
             if (LocalAudioSource.isLocal(uri)) {
@@ -289,16 +289,10 @@ object VersionAudioAligner {
         return AudioCache.renditionDataSource(watch, pick)
     }
 
-    private fun safeClose(ds: MediaDataSource?) {
-        if (ds != null) {
-            runCatching { ds.close() }
-        }
-    }
-
     /**
      * Computes RMS energy envelope over sliding windows.
      */
-    private fun computeEnergyEnvelope(
+    internal fun computeEnergyEnvelope(
         samples: FloatArray,
         sampleRate: Double,
         hopMs: Double = HOP_MS,

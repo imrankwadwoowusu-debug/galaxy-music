@@ -1,7 +1,6 @@
 package com.music.bitchord.playback.smart
 
 import android.content.Context
-import android.media.MediaDataSource
 import android.net.Uri
 import android.util.Log
 import androidx.media3.common.util.UnstableApi
@@ -17,8 +16,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.sqrt
 
 /**
  * Cross-correlates audio energy envelopes across playback sources to compute
@@ -29,15 +26,15 @@ object StreamAudioAligner {
 
     private const val TAG = "StreamAudioAligner"
 
-    const val HOP_MS = 2.0 // 500 fps high-precision envelope
-    const val WIN_MS = 10.0 // 10ms transient window
-    const val MIN_CONFIDENCE = 0.40 // Minimum normalized cross-correlation
-    const val TIMEOUT_MS = 3000L // 3.0s deadline for alignment analysis
-    const val ANALYSIS_WARM_BYTES = 1_500_000L // 1.5MB background pre-warm
-    const val PRIMARY_WINDOW_START_SEC = 0.0
-    const val PRIMARY_WINDOW_END_SEC = 15.0
-    const val SECONDARY_WINDOW_BEFORE_SEC = 5.0
-    const val SECONDARY_WINDOW_AFTER_SEC = 10.0
+    internal const val HOP_MS = 2.0 // 500 fps high-precision envelope
+    internal const val WIN_MS = 10.0 // 10ms transient window
+    internal const val MIN_CONFIDENCE = 0.40 // Minimum normalized cross-correlation
+    internal const val TIMEOUT_MS = 3000L // 3.0s deadline for alignment analysis
+    internal const val ANALYSIS_WARM_BYTES = 1_500_000L // 1.5MB background pre-warm
+    internal const val PRIMARY_WINDOW_START_SEC = 0.0
+    internal const val PRIMARY_WINDOW_END_SEC = 15.0
+    internal const val SECONDARY_WINDOW_BEFORE_SEC = 5.0
+    internal const val SECONDARY_WINDOW_AFTER_SEC = 10.0
 
     // Cache computed offsets so repeat upgrades or seeks reuse the measurement instantly:
     // (mediaId, streamUrl) -> offsetMs
@@ -54,50 +51,18 @@ object StreamAudioAligner {
         offsetCache.clear()
     }
 
-    /** Where the incoming deck must start so [offsetMs] of content compensation is applied. */
+    /** Where the incoming deck must start so the offset is applied as content compensation. */
     fun seekPositionMs(currentPositionMs: Long, offsetMs: Long): Long =
         (currentPositionMs + offsetMs).coerceAtLeast(0L)
 
     /**
-     * Resolves analysis window bounds based on opening availability and playback position.
+     * Resolves analysis window bounds around the playback position.
      */
-    fun resolveWindow(hasOpening: Boolean, currentPosMs: Long): Pair<Double, Double> {
-        return if (hasOpening) {
-            PRIMARY_WINDOW_START_SEC to PRIMARY_WINDOW_END_SEC
-        } else {
-            val curSec = currentPosMs / 1000.0
-            val start = max(0.0, curSec - SECONDARY_WINDOW_BEFORE_SEC)
-            val end = curSec + SECONDARY_WINDOW_AFTER_SEC
-            start to end
-        }
-    }
-
-    /**
-     * Computes RMS energy envelope over sliding windows.
-     */
-    fun computeEnergyEnvelope(
-        samples: FloatArray,
-        sampleRate: Double,
-        hopMs: Double = HOP_MS,
-        winMs: Double = WIN_MS,
-    ): FloatArray {
-        val hopSamples = max(1, (sampleRate * (hopMs / 1000.0)).toInt())
-        val winSamples = max(hopSamples, (sampleRate * (winMs / 1000.0)).toInt())
-        val numFrames = max(0, (samples.size - winSamples) / hopSamples)
-        if (numFrames <= 0) return FloatArray(0)
-
-        val env = FloatArray(numFrames)
-        for (i in 0 until numFrames) {
-            val start = i * hopSamples
-            val end = min(samples.size, start + winSamples)
-            var sumSq = 0.0
-            for (j in start until end) {
-                val s = samples[j]
-                sumSq += s * s
-            }
-            env[i] = sqrt(sumSq / (end - start)).toFloat()
-        }
-        return env
+    fun resolveWindow(currentPosMs: Long): Pair<Double, Double> {
+        val curSec = currentPosMs / 1000.0
+        val start = max(0.0, curSec - SECONDARY_WINDOW_BEFORE_SEC)
+        val end = curSec + SECONDARY_WINDOW_AFTER_SEC
+        return start to end
     }
 
     /**
@@ -111,8 +76,8 @@ object StreamAudioAligner {
         targetSampleRate: Double,
         targetStartSec: Double,
     ): Pair<Long, Double> {
-        val sourceEnv = computeEnergyEnvelope(sourceSamples, sourceSampleRate)
-        val targetEnv = computeEnergyEnvelope(targetSamples, targetSampleRate)
+        val sourceEnv = VersionAudioAligner.computeEnergyEnvelope(sourceSamples, sourceSampleRate, HOP_MS, WIN_MS)
+        val targetEnv = VersionAudioAligner.computeEnergyEnvelope(targetSamples, targetSampleRate, HOP_MS, WIN_MS)
         if (sourceEnv.isEmpty() || targetEnv.isEmpty()) return Pair(0L, 0.0)
 
         val correlation = VersionAudioAligner.crossCorrelate(
@@ -164,7 +129,11 @@ object StreamAudioAligner {
             // Pre-warm 1.5 MB of audio data in background
             runCatching { AudioCache.warmRange(targetStreamUri, 0L, ANALYSIS_WARM_BYTES) }
 
-            val sourceDs = openSourceDataSource(context, currentSong)
+            val sourceDs = if (context == null || currentSong == null) {
+                null
+            } else {
+                VersionAudioAligner.openDataSource(context, currentSong)
+            }
             val targetDs = StreamAudioSource.open(context, targetStreamUri)
 
             if (sourceDs == null || targetDs == null) {
@@ -193,7 +162,7 @@ object StreamAudioAligner {
                 if (sourceDecode == null || targetDecode == null ||
                     sourceDecode.first.samples.isEmpty() || targetDecode.first.samples.isEmpty()
                 ) {
-                    val (secStart, secEnd) = resolveWindow(hasOpening = false, currentPosMs = currentPosMs)
+                    val (secStart, secEnd) = resolveWindow(currentPosMs)
                     sourceDecode = AudioDecoder.decodeRegion(sourceDs, secStart, secEnd, abort = { !isActive })
                     targetDecode = AudioDecoder.decodeRegion(targetDs, secStart, secEnd, abort = { !isActive })
                 }
@@ -218,7 +187,7 @@ object StreamAudioAligner {
                 )
 
                 if (isConfident(confidence)) {
-                    offsetCache[mediaId to streamUrl] = offsetMs
+                    putCachedOffsetMs(mediaId, streamUrl, offsetMs)
                     TrackLog.d(TAG, "Stream alignment for $mediaId: offset=${offsetMs}ms, confidence=$confidence")
                     return@withContext offsetMs
                 }
@@ -238,29 +207,6 @@ object StreamAudioAligner {
     } ?: run {
         TrackLog.w(TAG, "Stream alignment timed out after ${TIMEOUT_MS}ms for $mediaId; fallback 0ms")
         0L
-    }
-
-    private fun openSourceDataSource(context: Context?, song: Song?): MediaDataSource? {
-        if (song == null) return null
-        song.localUri?.let { local ->
-            val uri = Uri.parse(local)
-            if (LocalAudioSource.isLocal(uri) && context != null) {
-                return LocalAudioSource.open(context.contentResolver, uri)
-            }
-        }
-        val watch = Uri.parse("bitchord://watch?v=${song.videoId}")
-        val onDisk = AudioCache.renditionsOf(watch)
-        val sameSource = onDisk
-            .filter { !it.key.endsWith("#alt") }
-            .maxByOrNull { it.cachedPrefix }
-        val pick = if (sameSource != null &&
-            sameSource.cachedPrefix >= AudioCache.MIN_ALIGNMENT_PREFIX_BYTES
-        ) {
-            sameSource
-        } else {
-            onDisk.maxByOrNull { it.cachedPrefix }
-        } ?: return null
-        return AudioCache.renditionDataSource(watch, pick)
     }
 }
 

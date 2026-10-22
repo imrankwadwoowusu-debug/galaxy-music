@@ -2128,20 +2128,7 @@ class PlaybackService : MediaLibraryService() {
                 val alignedStartPos = StreamAudioAligner.seekPositionMs(activePlayer.currentPosition, alignmentOffsetMs)
 
             // Reset and configure standby player
-            standbyPlayer.stop()
-            standbyPlayer.clearMediaItems()
-            standbyPlayer.skipSilenceEnabled = activePlayer.skipSilenceEnabled
-            standbyPlayer.repeatMode = activePlayer.repeatMode
-            standbyPlayer.shuffleModeEnabled = activePlayer.shuffleModeEnabled
-            // The listener's speed, not the active player's: straight after an
-            // Advanced Automix blend the active player is still easing off its
-            // beatmatch stretch, and copying that would keep it for good.
-            standbyPlayer.setPlaybackSpeed(AppSettings.playbackSpeed.value)
-            standbyPlayer.volume = 0f
-            standbyPlayer.setMediaItems(newItems, currentIndex, alignedStartPos)
-            spareLoudness().track(mediaId, nextMediaIdOf(standbyPlayer))
-            standbyPlayer.playWhenReady = false
-            standbyPlayer.prepare()
+            configureStandby(standbyPlayer, activePlayer, newItems, currentIndex, alignedStartPos, mediaId)
 
             // Wait for standby to buffer and reach STATE_READY in the background
             val timeoutAt = SystemClock.elapsedRealtime() + 7_000L
@@ -4548,6 +4535,31 @@ class PlaybackService : MediaLibraryService() {
         val duration: Long,
     )
 
+    /** Resets [standby] to mirror [active]'s settings and queues [items] at [index]. */
+    private fun configureStandby(
+        standby: ExoPlayer,
+        active: ExoPlayer,
+        items: List<MediaItem>,
+        index: Int,
+        startPositionMs: Long,
+        mediaId: String,
+    ) {
+        standby.stop()
+        standby.clearMediaItems()
+        standby.skipSilenceEnabled = active.skipSilenceEnabled
+        standby.repeatMode = active.repeatMode
+        standby.shuffleModeEnabled = active.shuffleModeEnabled
+        // The listener's speed, not the active player's: straight after an
+        // Advanced Automix blend the active player is still easing off its
+        // beatmatch stretch, and copying that would keep it for good.
+        standby.setPlaybackSpeed(AppSettings.playbackSpeed.value)
+        standby.volume = 0f
+        standby.setMediaItems(items, index, startPositionMs)
+        spareLoudness().track(mediaId, nextMediaIdOf(standby))
+        standby.playWhenReady = false
+        standby.prepare()
+    }
+
     /**
      * Replaces the playing track's audio with [stream], keeping the position.
      *
@@ -4618,17 +4630,7 @@ class PlaybackService : MediaLibraryService() {
                 TrackLog.d("BitChord", "waveform alignment applied on standby deck: offset=${offsetMs}ms, starting standby at ${livePos}ms (raw=${activePlayer.currentPosition}ms)", about = mediaId)
             }
 
-            standbyPlayer.stop()
-            standbyPlayer.clearMediaItems()
-            standbyPlayer.skipSilenceEnabled = activePlayer.skipSilenceEnabled
-            standbyPlayer.repeatMode = activePlayer.repeatMode
-            standbyPlayer.shuffleModeEnabled = activePlayer.shuffleModeEnabled
-            standbyPlayer.setPlaybackSpeed(AppSettings.playbackSpeed.value)
-            standbyPlayer.volume = 0f
-            standbyPlayer.setMediaItems(newItems, currentIndex, livePos)
-            spareLoudness().track(mediaId, nextMediaIdOf(standbyPlayer))
-            standbyPlayer.playWhenReady = false
-            standbyPlayer.prepare()
+            configureStandby(standbyPlayer, activePlayer, newItems, currentIndex, livePos, mediaId)
 
             val timeoutAt = SystemClock.elapsedRealtime() + 5_000L
             var isReady = false

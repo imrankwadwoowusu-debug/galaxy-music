@@ -92,7 +92,7 @@ class StreamAudioSource(
          * Opens [uri] for random-access reading via [LocalAudioSource] or [AudioCache].
          * Returns null when no seekable bytes can be read.
          */
-        fun open(context: Context? = null, uri: Uri, streamUrl: String? = null): MediaDataSource? {
+        fun open(context: Context? = null, uri: Uri): MediaDataSource? {
             if (LocalAudioSource.isLocal(uri)) {
                 return context?.let { LocalAudioSource.open(it.contentResolver, uri) }
             }

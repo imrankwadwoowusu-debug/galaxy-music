@@ -54,7 +54,7 @@ class StreamAudioAlignerTest {
         )
 
         assertTrue("Confidence must exceed minimum threshold (got $confidence)", confidence >= 0.40)
-        // HOP_MS is 10ms, allow ±15ms tolerance
+        // HOP_MS is 2ms; ±15ms leaves room for envelope smear
         assertTrue(
             "Measured offset $measuredOffsetMs must be within 15ms of true offset 350ms",
             abs(measuredOffsetMs - 350L) <= 15L,
@@ -100,21 +100,9 @@ class StreamAudioAlignerTest {
     }
 
     @Test
-    fun `dynamic window selection chooses opening window then falls back around playback position`() {
-        // When opening bytes available: [0.0 .. 15.0]
-        val openingWindow = StreamAudioAligner.resolveWindow(hasOpening = true, currentPosMs = 45000L)
-        assertEquals(0.0, openingWindow.first, 0.001)
-        assertEquals(15.0, openingWindow.second, 0.001)
-
-        // When opening bytes missing/evicted: [max(0.0, currentPos - 5.0) .. currentPos + 10.0]
-        val midTrackWindow = StreamAudioAligner.resolveWindow(hasOpening = false, currentPosMs = 45000L)
-        assertEquals(40.0, midTrackWindow.first, 0.001)
-        assertEquals(55.0, midTrackWindow.second, 0.001)
-
-        // Near beginning of track: clamp start to 0.0
-        val earlyTrackWindow = StreamAudioAligner.resolveWindow(hasOpening = false, currentPosMs = 2000L)
-        assertEquals(0.0, earlyTrackWindow.first, 0.001)
-        assertEquals(12.0, earlyTrackWindow.second, 0.001)
+    fun `window falls back around the playback position and clamps at the track start`() {
+        assertEquals(40.0 to 55.0, StreamAudioAligner.resolveWindow(currentPosMs = 45000L))
+        assertEquals(0.0 to 12.0, StreamAudioAligner.resolveWindow(currentPosMs = 2000L))
     }
 
     @Test
