@@ -1478,7 +1478,11 @@ fun SettingsScreen(
                     enabled = smartVersionAlignment,
                     trailing = {
                         Switch(
-                            checked = AppSettings.sourceAlignmentEnabled,
+                            // Reads the collected states, not
+                            // [AppSettings.sourceAlignmentEnabled]: that is a
+                            // plain StateFlow read, which Compose does not
+                            // track, so the switch would not redraw on a tap.
+                            checked = smartVersionAlignment && smartSourceAlignment,
                             onCheckedChange = AppSettings::setSmartSourceAlignment,
                             enabled = smartVersionAlignment,
                             colors = SwitchDefaults.colors(
