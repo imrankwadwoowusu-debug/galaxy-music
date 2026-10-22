@@ -1478,7 +1478,7 @@ fun SettingsScreen(
                     enabled = smartVersionAlignment,
                     trailing = {
                         Switch(
-                            checked = smartVersionAlignment && smartSourceAlignment,
+                            checked = AppSettings.sourceAlignmentEnabled,
                             onCheckedChange = AppSettings::setSmartSourceAlignment,
                             enabled = smartVersionAlignment,
                             colors = SwitchDefaults.colors(

@@ -122,8 +122,7 @@ object StreamAudioAligner {
         targetStreamUri: Uri,
         streamUrl: String,
     ): Long = withTimeoutOrNull(TIMEOUT_MS) {
-        val cached = offsetCache[mediaId to streamUrl]
-        if (cached != null) return@withTimeoutOrNull cached
+        getCachedOffsetMs(mediaId, streamUrl)?.let { return@withTimeoutOrNull it }
 
         withContext(Dispatchers.IO) {
             // Pre-warm 1.5 MB of audio data in background

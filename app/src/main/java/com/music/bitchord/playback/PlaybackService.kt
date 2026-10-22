@@ -4560,6 +4560,15 @@ class PlaybackService : MediaLibraryService() {
         standby.prepare()
     }
 
+    /** Records the offset a swap applied, or clears it when alignment is off. */
+    private fun recordAlignment(enabled: Boolean, mediaId: String, offsetMs: Long, driftMs: Long?) {
+        if (enabled) {
+            NerdStats.recordAlignmentOffset(mediaId, offsetMs, driftMs)
+        } else {
+            NerdStats.clearAlignmentOffset(mediaId)
+        }
+    }
+
     /**
      * Replaces the playing track's audio with [stream], keeping the position.
      *
@@ -4610,11 +4619,7 @@ class PlaybackService : MediaLibraryService() {
             activePlayer.replaceMediaItem(currentIndex, upgradedItem)
             activePlayer.seekTo(currentIndex, targetSeekPos)
             activePlayer.prepare()
-            if (alignmentEnabled) {
-                NerdStats.recordAlignmentOffset(mediaId, offsetMs, null)
-            } else {
-                NerdStats.clearAlignmentOffset(mediaId)
-            }
+            recordAlignment(alignmentEnabled, mediaId, offsetMs, null)
             return true
         }
 
@@ -4660,6 +4665,37 @@ class PlaybackService : MediaLibraryService() {
                 TrackLog.w("BitChord", "upgrade standby player failed to prepare; aborting swap to preserve current audio", about = mediaId)
                 QualityUpgrade.shelve(mediaId, stream)
                 return false
+            }
+
+            // A spare deck occasionally comes up without a seek map: the item
+            // reports itself unseekable, so every seek below is dropped and the
+            // deck can never be brought level. Preparing it a second time
+            // usually resolves the source; if it does not, leave the listener's
+            // audio alone rather than adopt a deck seconds behind.
+            if (!standbyPlayer.isCurrentMediaItemSeekable) {
+                TrackLog.w("BitChord", "standby deck came up unseekable; preparing it once more", about = mediaId)
+                configureStandby(
+                    standbyPlayer,
+                    activePlayer,
+                    newItems,
+                    currentIndex,
+                    StreamAudioAligner.seekPositionMs(activePlayer.currentPosition, offsetMs),
+                    mediaId,
+                )
+                val repreparedAt = SystemClock.elapsedRealtime() + 5_000L
+                while (coroutineContext.isActive &&
+                    standbyPlayer.playbackState != Player.STATE_READY &&
+                    SystemClock.elapsedRealtime() < repreparedAt
+                ) {
+                    delay(20)
+                }
+                if (standbyPlayer.playbackState != Player.STATE_READY ||
+                    !standbyPlayer.isCurrentMediaItemSeekable
+                ) {
+                    TrackLog.w("BitChord", "upgrade abandoned: standby deck is not seekable", about = mediaId)
+                    QualityUpgrade.shelve(mediaId, stream)
+                    return false
+                }
             }
 
             val willPlay = wasPlaying && activePlayer.playWhenReady
@@ -4718,6 +4754,22 @@ class PlaybackService : MediaLibraryService() {
                     }
                     val drift = measureStandbyDriftMs(activePlayer, standbyPlayer, offsetMs) ?: break
                     syncResidual = drift
+                    // A deck that accepted the start position and then restarted from
+                    // zero ignores every later seek too, so the gap only grows. Chasing
+                    // it folds seconds into the lead and records that as "alignment";
+                    // leave the listener's current audio alone instead.
+                    if (abs(drift) > MAX_SYNC_DRIFT_MS) {
+                        TrackLog.w(
+                            "BitChord",
+                            "upgrade abandoned: standby deck is ${drift}ms behind and not seeking" +
+                                " (active=${activePlayer.currentPosition} standby=${standbyPlayer.currentPosition}" +
+                                " dur=${standbyPlayer.duration} seekable=${standbyPlayer.isCurrentMediaItemSeekable}" +
+                                " buffered=${standbyPlayer.bufferedPosition} uri=${standbyPlayer.currentMediaItem?.localConfiguration?.uri})",
+                            about = mediaId,
+                        )
+                        QualityUpgrade.shelve(mediaId, stream)
+                        return false
+                    }
                     TrackLog.d("BitChord", "upgrade standby sync #$attempt: standby behind by ${drift}ms (lead=${lead.leadMs}ms)", about = mediaId)
                     if (abs(drift) <= SYNC_TOLERANCE_MS || attempt == SYNC_MAX_SEEKS ||
                         SystemClock.elapsedRealtime() > syncDeadline
@@ -4737,11 +4789,7 @@ class PlaybackService : MediaLibraryService() {
                 isSameTrack = true,
             )
             adopted = true
-            if (alignmentEnabled) {
-                NerdStats.recordAlignmentOffset(mediaId, offsetMs + lead.leadMs, syncResidual)
-            } else {
-                NerdStats.clearAlignmentOffset(mediaId)
-            }
+            recordAlignment(alignmentEnabled, mediaId, offsetMs + lead.leadMs, syncResidual)
             return true
         } finally {
             if (!adopted) {
@@ -4976,7 +5024,7 @@ class PlaybackService : MediaLibraryService() {
                 .withResolvedStreamType(stream.url)
                 .build()
 
-            val targetSeekPos = (now.position + offsetMs).coerceAtLeast(0L)
+            val targetSeekPos = StreamAudioAligner.seekPositionMs(now.position, offsetMs)
             val swapped = swapToAlignedStream(now, upgradedItem, stream, offsetMs)
             if (!swapped) return@withContext
 
@@ -9161,6 +9209,13 @@ class PlaybackService : MediaLibraryService() {
         const val UPGRADE_AFTER_CROSSFADE_MS = 5_000L
         private const val SYNC_MAX_SEEKS = 5
         private const val SYNC_TOLERANCE_MS = 20L
+
+        /**
+         * A gap this wide is not a seek the lead can pay back: the standby deck
+         * is not following its seeks at all, and the swap is abandoned rather
+         * than left chasing it.
+         */
+        private const val MAX_SYNC_DRIFT_MS = 2_000L
 
         /**
          * How long a replacement gets to report a length before it is
