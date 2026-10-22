@@ -140,6 +140,13 @@ internal object DesktopBrowserCookies {
         } else {
             null
         }
+        val macPassword = if (DesktopPlatform.isMac) {
+            profile.secretAttribute?.let { service ->
+                DesktopMacKeychain.chromiumSafeStoragePassword(service, profile.browser)
+            }
+        } else {
+            null
+        }
         val windowsKey = if (DesktopPlatform.isWindows) windowsMasterKey(profile.localState) else null
         return query(database) { connection ->
             val cookies = LinkedHashMap<String, String>()
@@ -157,7 +164,7 @@ internal object DesktopBrowserCookies {
                         val value = when {
                             !plain.isNullOrBlank() -> plain
                             sealed == null || sealed.isEmpty() -> null
-                            else -> decrypt(sealed, host, linuxPassword, windowsKey).also {
+                            else -> decrypt(sealed, host, linuxPassword, macPassword, windowsKey).also {
                                 if (it == null) undecipherable++
                                 if (name in SIGNING_COOKIES && sealed.hasPrefix(APP_BOUND_PREFIX)) {
                                     appBoundSigningCookie = true
@@ -187,11 +194,12 @@ internal object DesktopBrowserCookies {
         sealed: ByteArray,
         host: String,
         keyringPassword: ByteArray?,
+        macPassword: ByteArray?,
         windowsKey: ByteArray?,
-    ): String? = if (DesktopPlatform.isWindows) {
-        decryptWindows(sealed, windowsKey, host)
-    } else {
-        decryptLinux(sealed, host, keyringPassword)
+    ): String? = when {
+        DesktopPlatform.isWindows -> decryptWindows(sealed, windowsKey, host)
+        DesktopPlatform.isMac -> decryptMac(sealed, host, macPassword)
+        else -> decryptLinux(sealed, host, keyringPassword)
     }
 
     /** Chromium's AES-GCM cookie format after its browser key has been unwrapped with DPAPI. */
@@ -223,16 +231,41 @@ internal object DesktopBrowserCookies {
             "v11" -> keyringPassword ?: return null
             else -> return null
         }
+        return decryptAesCbc(sealed, host, password, LINUX_ITERATIONS)
+    }
+
+    /**
+     * Chromium's cookie encryption on macOS: Keychain "… Safe Storage" password, PBKDF2 with
+     * 1003 iterations, then AES-128-CBC (same salt/IV as Linux). Values are tagged `v10`.
+     */
+    internal fun decryptMac(sealed: ByteArray, host: String, safeStoragePassword: ByteArray?): String? {
+        if (sealed.size <= PREFIX_BYTES) return null
+        if (!sealed.hasPrefix(CHROMIUM_V10) && !sealed.hasPrefix(CHROMIUM_V11)) return null
+        val password = safeStoragePassword ?: return null
+        return decryptAesCbc(sealed, host, password, MAC_ITERATIONS)
+    }
+
+    private fun decryptAesCbc(
+        sealed: ByteArray,
+        host: String,
+        password: ByteArray,
+        iterations: Int,
+    ): String? {
         val plain = runCatching {
             val key = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1")
-                .generateSecret(PBEKeySpec(String(password, Charsets.UTF_8).toCharArray(), SALT, ITERATIONS, KEY_BITS))
+                .generateSecret(
+                    PBEKeySpec(String(password, Charsets.UTF_8).toCharArray(), SALT, iterations, KEY_BITS),
+                )
                 .encoded
             Cipher.getInstance("AES/CBC/PKCS5Padding").run {
-                init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(ByteArray(16) { ' '.code.toByte() }))
+                init(
+                    Cipher.DECRYPT_MODE,
+                    SecretKeySpec(key, "AES"),
+                    IvParameterSpec(ByteArray(16) { ' '.code.toByte() }),
+                )
                 doFinal(sealed, PREFIX_BYTES, sealed.size - PREFIX_BYTES)
             }
         }.getOrElse { return null }
-
         return String(stripHostDigest(plain, host), Charsets.UTF_8)
     }
 
@@ -282,7 +315,8 @@ internal object DesktopBrowserCookies {
     /** Chromium's constant when no keyring is in use; its own choice of word. */
     private const val FALLBACK_PASSWORD = "peanuts"
     private val SALT = "saltysalt".toByteArray(Charsets.UTF_8)
-    private const val ITERATIONS = 1
+    private const val LINUX_ITERATIONS = 1
+    private const val MAC_ITERATIONS = 1003
     private const val KEY_BITS = 128
     private const val PREFIX_BYTES = 3
     private const val GCM_NONCE_BYTES = 12
@@ -344,29 +378,54 @@ internal object DesktopBrowserCookies {
 
     private data class ChromiumRoot(val browser: String, val root: Path, val secretAttribute: String?)
 
-    private fun firefoxRoots(): List<Pair<String, Path>> = if (DesktopPlatform.isWindows) {
-        val roaming = System.getenv("APPDATA")?.let(Paths::get) ?: home.resolve("AppData/Roaming")
-        listOf(
-            "Firefox" to roaming.resolve("Mozilla/Firefox/Profiles"),
-            "LibreWolf" to roaming.resolve("librewolf/Profiles"),
-            "Waterfox" to roaming.resolve("Waterfox/Profiles"),
-            "Zen" to roaming.resolve("zen/Profiles"),
-        )
-    } else {
-        LINUX_FIREFOX_ROOTS.map { (name, relative) -> name to home.resolve(relative) }
+    private fun firefoxRoots(): List<Pair<String, Path>> = when {
+        DesktopPlatform.isWindows -> {
+            val roaming = System.getenv("APPDATA")?.let(Paths::get) ?: home.resolve("AppData/Roaming")
+            listOf(
+                "Firefox" to roaming.resolve("Mozilla/Firefox/Profiles"),
+                "LibreWolf" to roaming.resolve("librewolf/Profiles"),
+                "Waterfox" to roaming.resolve("Waterfox/Profiles"),
+                "Zen" to roaming.resolve("zen/Profiles"),
+            )
+        }
+        DesktopPlatform.isMac -> {
+            val support = home.resolve("Library/Application Support")
+            listOf(
+                "Firefox" to support.resolve("Firefox/Profiles"),
+                "LibreWolf" to support.resolve("librewolf/Profiles"),
+                "Waterfox" to support.resolve("Waterfox/Profiles"),
+                "Zen" to support.resolve("zen/Profiles"),
+            )
+        }
+        else -> LINUX_FIREFOX_ROOTS.map { (name, relative) -> name to home.resolve(relative) }
     }
 
-    private fun chromiumRoots(): List<ChromiumRoot> = if (DesktopPlatform.isWindows) {
-        val local = System.getenv("LOCALAPPDATA")?.let(Paths::get) ?: home.resolve("AppData/Local")
-        listOf(
-            ChromiumRoot("Chrome", local.resolve("Google/Chrome/User Data"), null),
-            ChromiumRoot("Chromium", local.resolve("Chromium/User Data"), null),
-            ChromiumRoot("Edge", local.resolve("Microsoft/Edge/User Data"), null),
-            ChromiumRoot("Brave", local.resolve("BraveSoftware/Brave-Browser/User Data"), null),
-            ChromiumRoot("Vivaldi", local.resolve("Vivaldi/User Data"), null),
-        )
-    } else {
-        LINUX_CHROMIUM_ROOTS.map { (name, spec) ->
+    private fun chromiumRoots(): List<ChromiumRoot> = when {
+        DesktopPlatform.isWindows -> {
+            val local = System.getenv("LOCALAPPDATA")?.let(Paths::get) ?: home.resolve("AppData/Local")
+            listOf(
+                ChromiumRoot("Chrome", local.resolve("Google/Chrome/User Data"), null),
+                ChromiumRoot("Chromium", local.resolve("Chromium/User Data"), null),
+                ChromiumRoot("Edge", local.resolve("Microsoft/Edge/User Data"), null),
+                ChromiumRoot("Brave", local.resolve("BraveSoftware/Brave-Browser/User Data"), null),
+                ChromiumRoot("Vivaldi", local.resolve("Vivaldi/User Data"), null),
+            )
+        }
+        DesktopPlatform.isMac -> {
+            val support = home.resolve("Library/Application Support")
+            listOf(
+                ChromiumRoot("Chrome", support.resolve("Google/Chrome"), "Chrome Safe Storage"),
+                ChromiumRoot("Chromium", support.resolve("Chromium"), "Chromium Safe Storage"),
+                ChromiumRoot("Edge", support.resolve("Microsoft Edge"), "Microsoft Edge Safe Storage"),
+                ChromiumRoot(
+                    "Brave",
+                    support.resolve("BraveSoftware/Brave-Browser"),
+                    "Brave Safe Storage",
+                ),
+                ChromiumRoot("Vivaldi", support.resolve("Vivaldi"), "Vivaldi Safe Storage"),
+            )
+        }
+        else -> LINUX_CHROMIUM_ROOTS.map { (name, spec) ->
             ChromiumRoot(name, home.resolve(spec.first), spec.second)
         }
     }

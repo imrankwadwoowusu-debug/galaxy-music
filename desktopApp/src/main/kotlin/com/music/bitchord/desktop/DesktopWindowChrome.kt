@@ -116,6 +116,7 @@ internal fun DesktopWindowButtons(modifier: Modifier = Modifier) {
     if (!DesktopPlatform.drawsOwnWindowFrame) return
     val actions = LocalDesktopWindowActions.current ?: return
     val maximized by DesktopWindowMode.maximized.collectAsState()
+    val fullScreen by DesktopWindowMode.fullScreen.collectAsState()
     val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
     val isFocused = windowInfo.isWindowFocused
     val inactiveFill = if (!isFocused && DesktopPlatform.isMac) Color.White.copy(alpha = 0.22f) else null
@@ -153,7 +154,12 @@ internal fun DesktopWindowButtons(modifier: Modifier = Modifier) {
             )
         }
         MacCaptionButton(
-            if (maximized) "Restore" else "Maximize",
+            when {
+                DesktopPlatform.isMac && fullScreen -> "Exit Full Screen"
+                DesktopPlatform.isMac -> "Enter Full Screen"
+                maximized -> "Restore"
+                else -> "Maximize"
+            },
             MAC_MAXIMIZE,
             onClick = actions.toggleMaximize,
             inactiveFill = inactiveFill,
@@ -242,7 +248,7 @@ private fun Modifier.captionPress(scope: WindowScope, actions: DesktopWindowActi
             if (double) {
                 lastPressAt = 0L
                 down.consume()
-                actions?.toggleMaximize()
+                if (DesktopPlatform.isMac) DesktopMacFrame.onTitleBarDoubleClick() else actions?.toggleMaximize()
                 return@awaitEachGesture
             }
             lastPressAt = down.uptimeMillis

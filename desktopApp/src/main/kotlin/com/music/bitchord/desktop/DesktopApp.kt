@@ -6,7 +6,10 @@ import com.music.bitchord.ui.components.ShelfRowChrome
 import com.music.bitchord.ui.components.ShelfRow
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.pointer.isBackPressed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -1164,6 +1167,17 @@ fun BitChordDesktopApp() {
 
     fun openAlbum(browseId: String) = openCollection(browseId)
 
+    /** Selects the saved file in the system file manager. Absent when nothing is on disk. */
+    fun revealAction(song: Song): (() -> Unit)? {
+        if (songToReveal(song, downloads) == null) return null
+        return {
+            val path = songToReveal(song, downloads)?.let { DesktopDownloadManager.savedFile(it) }
+            if (path != null && !revealInFolder(path)) {
+                DesktopTrackLog.log("could not show '${song.title}' in the file manager")
+            }
+        }
+    }
+
     /** Copies the track's YouTube Music link. */
     fun shareSong(song: Song) {
         DesktopExternalLinks.copy("https://music.youtube.com/watch?v=${song.videoId}")
@@ -1744,6 +1758,26 @@ fun BitChordDesktopApp() {
         )
         onDispose { DesktopWindowsMedia.stop() }
     }
+    // macOS Now Playing / Control Center / media keys — same contract as SMTC above.
+    DisposableEffect(playbackEngine) {
+        DesktopMacMedia.start(
+            DesktopMacMedia.Controller(
+                onPlay = ::playFromUser,
+                onPause = ::pauseFromUser,
+                onPlayPause = ::togglePlayPauseFromUser,
+                onNext = ::playNext,
+                onPrevious = ::playPrevious,
+                onStop = ::pauseFromUser,
+                onSeek = { positionMs ->
+                    if (!DesktopListenTogether.state.value.controlsLocked) {
+                        playbackEngine.seekTo(positionMs)
+                        partySync.onLocalIntent()
+                    }
+                },
+            ),
+        )
+        onDispose { DesktopMacMedia.stop() }
+    }
 
     LaunchedEffect(playbackSpeed) { playbackEngine.setPlaybackSpeed(playbackSpeed) }
     LaunchedEffect(volume) { playbackEngine.setVolume(volume) }
@@ -1998,6 +2032,7 @@ fun BitChordDesktopApp() {
     LaunchedEffect(playback.song?.videoId, playback.isPlaying, playback.durationMs) {
         DesktopScrobbling.onPlaybackStateChanged(playback)
         DesktopWindowsMedia.publish(playback)
+        DesktopMacMedia.publish(playback)
     }
     // Refetched on opening the page rather than cached for the session: the
     // point of it is that something played elsewhere shows up here.
@@ -2106,6 +2141,7 @@ fun BitChordDesktopApp() {
         },
         onSleepAfterTrack = { DesktopSleepTimer.startAfterTrack() },
         onShare = ::shareSong,
+        onReveal = revealAction(song),
     )
 
     /** The "…" a song row hangs off, built the same way on every page that offers one. */
@@ -2559,9 +2595,30 @@ fun BitChordDesktopApp() {
         if (!trayIconEnabled) return@LaunchedEffect
         // The logo travels to the tray as pixels: a themed icon name would be whatever the user's
         // theme draws for a generic music player.
-        runCatching { Res.readBytes("drawable/logo.svg") }.onSuccess(tray::setIcon)
+        // macOS draws the waveform on its own, at menu-bar size. The full tile is what the
+        // other desktops put in the tray.
+        val asset = if (DesktopPlatform.isMac) "drawable/logo_mark.svg" else "drawable/logo.svg"
+        runCatching { Res.readBytes(asset) }.onSuccess(tray::setIcon)
     }
     LaunchedEffect(tray) {
+        val quit = {
+            playbackEngine.shutdown()
+            DesktopWindowsMedia.stop()
+            DesktopMacMedia.stop()
+            exitProcess(0)
+        }
+        if (DesktopPlatform.isMac) {
+            DesktopMacAppMenu.bind(
+                settings = {
+                    DesktopWindowVisibility.show()
+                    openSettings()
+                },
+                playPause = { if (selectedSong != null) togglePlayPauseFromUser() },
+                next = ::playNext,
+                previous = ::playPrevious,
+                quit = quit,
+            )
+        }
         DesktopTrayMenu.bind(
             onPlayPause = { if (selectedSong != null) togglePlayPauseFromUser() },
             onNext = ::playNext,
@@ -2574,19 +2631,14 @@ fun BitChordDesktopApp() {
                 DesktopWindowVisibility.show()
                 openSettings()
             },
-            onQuit = {
-                // Native work first: the audio thread and the media controls are inside FFmpeg,
-                // WASAPI and WinRT, and exitProcess would unload those libraries under them.
-                playbackEngine.shutdown()
-                DesktopWindowsMedia.stop()
-                exitProcess(0)
-            },
+            onQuit = quit,
         )
     }
     LaunchedEffect(selectedSong, playback.isPlaying) {
         val title = selectedSong?.let { "${it.title} — ${it.artist}" }
         tray.update(title = title, isPlaying = playback.isPlaying)
         DesktopTrayMenu.publish(title = title, playing = playback.isPlaying)
+        if (DesktopPlatform.isMac) DesktopMacAppMenu.refresh()
     }
 
     LaunchedEffect(Unit) {
@@ -2918,7 +2970,7 @@ fun BitChordDesktopApp() {
         }
     }
 
-    /** Back to the place before this one — the top bar's arrow, the mouse's back button, Alt+Left. */
+    /** Back to the place before this one — the top bar's arrow, the mouse's back button, Option+Left when no text field took it, or a trackpad swipe right. */
     fun goBack() {
         val entry = navHistory.removeLastOrNull() ?: return
         if (entry.key == here().key) return
@@ -2940,6 +2992,10 @@ fun BitChordDesktopApp() {
                 artistReloads++
             }
         }
+    }
+
+    LaunchedEffect(Unit) {
+        DesktopMacGestures.install(::goBack)
     }
 
     fun openMoodGenre(item: MoodGenre) {
@@ -3009,6 +3065,7 @@ fun BitChordDesktopApp() {
         },
         onSleepAfterTrack = { DesktopSleepTimer.startAfterTrack() },
         onShare = ::shareSong,
+        onReveal = revealAction(song),
     )
 
     // What the shared player reads as settings, kept in step with the window's own.
@@ -3140,6 +3197,16 @@ fun BitChordDesktopApp() {
         partySyncHolder[0]?.onLocalIntent()
     }
 
+    fun seekBy(deltaMs: Long) = seekPlayer(playback.positionMs + deltaMs)
+
+    fun changeVolume(delta: Float) {
+        val next = (volume + delta).coerceIn(0f, 1f)
+        volume = next
+        persistence.saveString("volume", next.toString())
+    }
+
+    val keyRepeats = remember { KeyRepeatTracker() }
+
     MaterialTheme(
         colorScheme = desktopColorScheme(),
         typography = desktopTypography(),
@@ -3178,12 +3245,8 @@ fun BitChordDesktopApp() {
                             playPrevious()
                             true
                         }
-                        event.key == Key.F11 -> {
+                        event.key == Key.F11 && desktopHandlesF11(DesktopPlatform.isMac) -> {
                             DesktopWindowMode.toggle()
-                            true
-                        }
-                        event.key == Key.DirectionLeft && event.isAltPressed && !overlays.nowPlaying -> {
-                            goBack()
                             true
                         }
                         DesktopPlatform.isMac && event.isMetaPressed && event.key == Key.Comma -> {
@@ -3226,6 +3289,55 @@ fun BitChordDesktopApp() {
                             else -> false
                         }
                         else -> false
+                    }
+                }.onKeyEvent { event ->
+                    val repeating = keyRepeats.downRepeats(event.key, event.type == KeyEventType.KeyDown)
+                    if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                    when (
+                        yieldingShortcut(
+                            key = event.key,
+                            alt = event.isAltPressed,
+                            meta = event.isMetaPressed,
+                            ctrl = event.isCtrlPressed,
+                            shift = event.isShiftPressed,
+                            mac = DesktopPlatform.isMac,
+                            playerOpen = overlays.nowPlaying,
+                            repeating = repeating,
+                        )
+                    ) {
+                        DesktopShortcut.PlayPause -> {
+                            if (selectedSong != null) togglePlayPauseFromUser()
+                            true
+                        }
+                        DesktopShortcut.Next -> {
+                            playNext()
+                            true
+                        }
+                        DesktopShortcut.Previous -> {
+                            playPrevious()
+                            true
+                        }
+                        DesktopShortcut.SeekForward -> {
+                            seekBy(DESKTOP_SEEK_STEP_MS)
+                            true
+                        }
+                        DesktopShortcut.SeekBackward -> {
+                            seekBy(-DESKTOP_SEEK_STEP_MS)
+                            true
+                        }
+                        DesktopShortcut.VolumeUp -> {
+                            changeVolume(DESKTOP_VOLUME_STEP)
+                            true
+                        }
+                        DesktopShortcut.VolumeDown -> {
+                            changeVolume(-DESKTOP_VOLUME_STEP)
+                            true
+                        }
+                        DesktopShortcut.Back -> {
+                            goBack()
+                            true
+                        }
+                        null -> false
                     }
                 },
                 topBar = { compact ->
@@ -5180,7 +5292,8 @@ private fun DesktopFrame(
     val glass = material != DesktopBackdrop.OFF
     val materialBehindApp = glass && appBackground
     val maximized by DesktopWindowMode.maximized.collectAsState()
-    val roundCorners = DesktopPlatform.isMac && !maximized
+    val fullScreen by DesktopWindowMode.fullScreen.collectAsState()
+    val roundCorners = DesktopPlatform.isMac && !maximized && !fullScreen
     CompositionLocalProvider(LocalDesktopHaze provides haze) {
         Box(
             modifier

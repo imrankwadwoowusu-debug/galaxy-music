@@ -75,6 +75,20 @@ internal object DesktopTrayMenu {
 
     fun revision(): Int = synchronized(lock) { revision }
 
+    /** The play or pause row, for the macOS Playback menu. */
+    fun playPauseLabel(): String = synchronized(lock) {
+        if (isPlaying) DesktopStrings["widget_pause", "Pause"] else DesktopStrings["widget_play", "Play"]
+    }
+
+    /** The track line, or null when nothing is loaded. */
+    fun nowPlayingTitle(): String? = synchronized(lock) { nowPlaying }
+
+    /** Same wording as the application menu's Settings item. */
+    fun settingsLabel(): String {
+        val name = DesktopStrings["settings", "Settings"].trimEnd(' ', '.', '…', '.')
+        return "$name…"
+    }
+
     /** The menu as it stands. */
     private fun entries(): List<Entry> = synchronized(lock) {
         buildList {
@@ -85,7 +99,11 @@ internal object DesktopTrayMenu {
             add(
                 Entry(
                     ID_PLAY_PAUSE,
-                    label = if (isPlaying) "Pause" else "Play",
+                    label = if (isPlaying) {
+                        DesktopStrings["widget_pause", "Pause"]
+                    } else {
+                        DesktopStrings["widget_play", "Play"]
+                    },
                     icon = if (isPlaying) "media-playback-pause" else "media-playback-start",
                     action = playPause,
                 ),
@@ -94,7 +112,7 @@ internal object DesktopTrayMenu {
             add(Entry(ID_PREVIOUS, label = DesktopStrings["widget_previous", "Previous"], icon = "media-skip-backward", action = previous))
             add(Entry(ID_SEPARATOR_MIDDLE, separator = true))
             add(Entry(ID_OPEN_PLAYER, label = DesktopStrings["widget_open_bitchord", "Open BitChord"], icon = "media-playback-start", action = openPlayer))
-            add(Entry(ID_SETTINGS, label = DesktopStrings["settings", "Settings"], icon = "preferences-system", action = openSettings))
+            add(Entry(ID_SETTINGS, label = settingsLabel(), icon = "preferences-system", action = openSettings))
             add(Entry(ID_SEPARATOR_BOTTOM, separator = true))
             add(Entry(ID_QUIT, label = DesktopStrings["d_quit_bitchord", "Quit BitChord"], icon = "application-exit", action = quit))
         }
@@ -117,11 +135,35 @@ internal object DesktopTrayMenu {
         }
     }
 
+    /** Status item: transport, then open, settings and quit. */
+    fun entriesForNative(): List<NativeMenuEntry> = entries().map {
+        NativeMenuEntry(it.id, it.label, it.separator, it.enabled)
+    }
+
+    /**
+     * Dock: transport only. Open is the Dock click itself, Settings lives in the app menu,
+     * and macOS already appends Quit.
+     */
+    fun entriesForDock(): List<NativeMenuEntry> = entries().filter {
+        it.id == ID_NOW_PLAYING || it.id == ID_SEPARATOR_TOP ||
+            it.id == ID_PLAY_PAUSE || it.id == ID_NEXT || it.id == ID_PREVIOUS
+    }.map { NativeMenuEntry(it.id, it.label, it.separator, it.enabled) }
+
+    /** Runs whatever the clicked entry does, on the toolkit's own thread. */
+    fun perform(id: Int) = activate(id)
+
     /** Runs whatever the clicked entry does, on the toolkit's own thread. */
     private fun activate(id: Int) {
         val action = entries().firstOrNull { it.id == id }?.action ?: return
         EventQueue.invokeLater(action)
     }
+
+    internal data class NativeMenuEntry(
+        val id: Int,
+        val label: String,
+        val separator: Boolean,
+        val enabled: Boolean,
+    )
 
     private data class Entry(
         val id: Int,

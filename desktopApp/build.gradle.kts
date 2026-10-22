@@ -170,6 +170,9 @@ val analysisNativeDir = layout.buildDirectory.dir("native/$targetOs")
 /** The tiny Windows frame bridge is independent of the optional analyser and SMTC libraries. */
 val windowNativeDir = layout.buildDirectory.dir("native-window/$targetOs")
 
+/** macOS Now Playing / MediaPlayer bridge. */
+val nowPlayingNativeDir = layout.buildDirectory.dir("native-nowplaying/$targetOs")
+
 /**
  * Whether this build is producing the analyser for a platform that is not the one running the
  * build.
@@ -356,14 +359,58 @@ val buildWindowNative by tasks.registering {
     }
 }
 
+/**
+ * Builds the macOS MediaPlayer Now Playing bridge. Absent on Linux/Windows; without it the
+ * app still runs but Control Center and media keys stay silent.
+ */
+val buildNowPlayingNative by tasks.registering {
+    val cmakeSource = project.file("native/nowplaying")
+    val outputDir = nowPlayingNativeDir.get().asFile
+    inputs.dir(cmakeSource)
+    inputs.property("target", targetOs)
+    outputs.dir(outputDir)
+    onlyIf {
+        if (targetOs != "macos") return@onlyIf false
+        val cmake = findOnPath("cmake")
+        if (cmake == null) {
+            logger.lifecycle(
+                "no usable cmake — building without macOS Now Playing controls. If cmake is " +
+                    "installed, a Gradle daemon started before it was on PATH may be in use: " +
+                    "./gradlew --stop",
+            )
+        }
+        cmake != null
+    }
+    doLast {
+        val javaHome = System.getProperty("java.home")
+        providers.exec {
+            commandLine(
+                cmakeBinary(),
+                "-S", cmakeSource.absolutePath,
+                "-B", outputDir.absolutePath,
+                "-DCMAKE_BUILD_TYPE=Release",
+            )
+            environment("JAVA_HOME", javaHome)
+        }.result.get().assertNormalExitValue()
+        providers.exec {
+            commandLine(cmakeBinary(), "--build", outputDir.absolutePath, "--config", "Release", "-j", "4")
+            environment("JAVA_HOME", javaHome)
+        }.result.get().assertNormalExitValue()
+    }
+}
+
 tasks.named<ProcessResources>("processResources") {
-    dependsOn(buildAnalysisNative, buildWindowNative)
+    dependsOn(buildAnalysisNative, buildWindowNative, buildNowPlayingNative)
     from(analysisNativeDir) {
         include("*.so", "*.dll", "*.dylib")
         into("native")
     }
     from(windowNativeDir) {
         include("*.dll")
+        into("native")
+    }
+    from(nowPlayingNativeDir) {
+        include("*.dylib")
         into("native")
     }
     // The Automix models, taken from the Android module rather than copied into this one.

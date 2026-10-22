@@ -89,4 +89,26 @@
     <string name="d_translation_unavailable">Traduction indisponible</string>
     <string name="d_what_the_translate_button_translates_into">La langue vers laquelle le bouton Traduire convertit les paroles</string>
     <string name="d_off">Désactivé</string>
+    <string name="d_mac_about">À propos de BitChord</string>
+    <string name="d_mac_hide">Masquer BitChord</string>
+    <string name="d_mac_hide_others">Masquer les autres</string>
+    <string name="d_mac_show_all">Tout afficher</string>
+    <string name="d_mac_edit">Édition</string>
+    <string name="d_mac_undo">Annuler</string>
+    <string name="d_mac_redo">Rétablir</string>
+    <string name="d_mac_cut">Couper</string>
+    <string name="d_mac_copy">Copier</string>
+    <string name="d_mac_paste">Coller</string>
+    <string name="d_mac_select_all">Tout sélectionner</string>
+    <string name="d_mac_playback">Lecture</string>
+    <string name="d_mac_window">Fenêtre</string>
+    <string name="d_mac_minimize">Réduire</string>
+    <string name="d_mac_zoom">Zoomer</string>
+    <string name="d_mac_enter_full_screen">Passer en plein écran</string>
+    <string name="d_mac_exit_full_screen">Quitter le plein écran</string>
+    <string name="d_show_in_finder">Afficher dans le Finder</string>
+    <string name="d_show_in_explorer">Afficher dans l'Explorateur</string>
+    <string name="d_show_in_files">Afficher dans Fichiers</string>
+    <string name="d_mac_close">Fermer</string>
+    <string name="d_mac_bring_front">Tout ramener au premier plan</string>
 </resources>

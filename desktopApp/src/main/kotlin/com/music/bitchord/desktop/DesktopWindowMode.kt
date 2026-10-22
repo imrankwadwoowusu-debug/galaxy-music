@@ -29,7 +29,14 @@ internal object DesktopWindowMode {
     private val fillsScreen: WindowPlacement =
         if (DesktopPlatform.drawsOwnWindowFrame) WindowPlacement.Maximized else WindowPlacement.Fullscreen
 
-    fun toggle() = setFullScreen(!_fullScreen.value)
+    fun toggle() {
+        val entering = DesktopMacFrame.toggleFullScreen()
+        if (entering != null) {
+            _fullScreen.value = entering
+            return
+        }
+        setFullScreen(!_fullScreen.value)
+    }
 
     /**
      * Maximize or restore, which is what the caption button in the corner does and what
@@ -48,7 +55,22 @@ internal object DesktopWindowMode {
      * the window being put away to the tray.
      */
     fun exit() {
+        if (DesktopPlatform.isMac && DesktopMacFrame.isFullScreen()) {
+            DesktopMacFrame.toggleFullScreen()
+            _fullScreen.value = false
+            return
+        }
         if (_fullScreen.value) setFullScreen(false)
+    }
+
+    /** AppKit finished entering or leaving the full-screen Space. The window's placement stays put. */
+    fun noteNativeFullScreen(on: Boolean) {
+        _fullScreen.value = on
+    }
+
+    /** AppKit zoomed or restored the window in place, without Compose moving it a second time. */
+    fun noteNativeZoomed(zoomed: Boolean) {
+        _maximized.value = zoomed
     }
 
     /** Takes the window's word for how it is sitting, rather than this object's. */

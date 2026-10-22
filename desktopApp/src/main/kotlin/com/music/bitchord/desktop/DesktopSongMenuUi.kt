@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.DownloadDone
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Radio
@@ -93,6 +94,8 @@ internal data class DesktopSongActions(
     val onSleepTimer: (Int?) -> Unit,
     val onSleepAfterTrack: () -> Unit,
     val onShare: (Song) -> Unit,
+    /** Selects the saved file in Finder, Explorer, or Files. Null when nothing is on disk. */
+    val onReveal: (() -> Unit)? = null,
 )
 
 /**
@@ -222,6 +225,7 @@ internal fun DesktopSongMenuFor(
         onSleepTimer = { actions.onSleepTimer(it); close() },
         onSleepAfterTrack = { actions.onSleepAfterTrack(); close() },
         onShare = { actions.onShare(song); close() },
+        onReveal = actions.onReveal?.let { reveal -> { reveal(); close() } },
         onMore = onMore,
         onSwitchLyricsQueue = onSwitchLyricsQueue?.let { { it(); close() } },
         queueShowing = queueShowing,
@@ -266,6 +270,7 @@ internal fun DesktopSongMenu(
     onSleepTimer: (Int?) -> Unit,
     onSleepAfterTrack: () -> Unit,
     onShare: () -> Unit,
+    onReveal: (() -> Unit)? = null,
     /** Opens the player's own overflow; null on a menu raised from a list. */
     onMore: (() -> Unit)? = null,
     /** Switch the player between lyrics and queue; null when there is no player. */
@@ -411,6 +416,16 @@ internal fun DesktopSongMenu(
                 icon = BitChordIcons.Download,
                 label = DesktopStrings["download", "Download"],
                 onClick = onDownload,
+            )
+        }
+        onReveal?.let {
+            DesktopMenuRow(
+                Icons.Rounded.FolderOpen,
+                DesktopStrings[
+                    revealLabelKey(DesktopPlatform.isMac, DesktopPlatform.isWindows),
+                    revealLabelFallback(DesktopPlatform.isMac, DesktopPlatform.isWindows),
+                ],
+                onClick = it,
             )
         }
         DesktopMenuRow(Icons.Rounded.Radio, DesktopStrings["start_radio", "Start radio"], onClick = onStartRadio)

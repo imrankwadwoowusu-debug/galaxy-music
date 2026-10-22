@@ -91,4 +91,26 @@
     <string name="d_translation_unavailable">Translation unavailable</string>
     <string name="d_what_the_translate_button_translates_into">What the translate button on the lyrics translates into</string>
     <string name="d_off">Off</string>
+    <string name="d_mac_about">About BitChord</string>
+    <string name="d_mac_hide">Hide BitChord</string>
+    <string name="d_mac_hide_others">Hide Others</string>
+    <string name="d_mac_show_all">Show All</string>
+    <string name="d_mac_edit">Edit</string>
+    <string name="d_mac_undo">Undo</string>
+    <string name="d_mac_redo">Redo</string>
+    <string name="d_mac_cut">Cut</string>
+    <string name="d_mac_copy">Copy</string>
+    <string name="d_mac_paste">Paste</string>
+    <string name="d_mac_select_all">Select All</string>
+    <string name="d_mac_playback">Playback</string>
+    <string name="d_mac_window">Window</string>
+    <string name="d_mac_minimize">Minimize</string>
+    <string name="d_mac_zoom">Zoom</string>
+    <string name="d_mac_enter_full_screen">Enter Full Screen</string>
+    <string name="d_mac_exit_full_screen">Exit Full Screen</string>
+    <string name="d_show_in_finder">Show in Finder</string>
+    <string name="d_show_in_explorer">Show in Explorer</string>
+    <string name="d_show_in_files">Show in Files</string>
+    <string name="d_mac_close">Close</string>
+    <string name="d_mac_bring_front">Bring All to Front</string>
 </resources>

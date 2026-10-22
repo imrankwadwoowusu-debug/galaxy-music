@@ -14,6 +14,8 @@ internal object DesktopSecretStore {
 
     private const val DEFAULT_COLLECTION = "/org/freedesktop/secrets/aliases/default"
 
+    private const val KEYCHAIN_SERVICE = "BitChord"
+
     /**
      * Runs [block] with an open Secret Service session, or returns null.
      *
@@ -38,21 +40,25 @@ internal object DesktopSecretStore {
     }
 
     /** The first secret stored under [attributes], as bytes. */
-    fun lookup(attributes: Map<String, String>): ByteArray? = withService { _, service, session ->
-        val found = service.SearchItems(attributes)
-        val items = buildList {
-            addAll(found.unlocked)
-            if (found.locked.isNotEmpty()) {
-                runCatching { service.Unlock(found.locked) }.getOrNull()?.let { addAll(it.unlocked) }
+    fun lookup(attributes: Map<String, String>): ByteArray? {
+        if (DesktopPlatform.isMac) return macLookup(attributes)
+        return withService { _, service, session ->
+            val found = service.SearchItems(attributes)
+            val items = buildList {
+                addAll(found.unlocked)
+                if (found.locked.isNotEmpty()) {
+                    runCatching { service.Unlock(found.locked) }.getOrNull()?.let { addAll(it.unlocked) }
+                }
             }
+            if (items.isEmpty()) return@withService null
+            service.GetSecrets(items, session).values.firstOrNull()?.value
         }
-        if (items.isEmpty()) return@withService null
-        service.GetSecrets(items, session).values.firstOrNull()?.value
     }
 
     /** Stores [secret] under [attributes], replacing whatever was there. */
-    fun store(label: String, attributes: Map<String, String>, secret: ByteArray): Boolean =
-        withService { connection, service, session ->
+    fun store(label: String, attributes: Map<String, String>, secret: ByteArray): Boolean {
+        if (DesktopPlatform.isMac) return macStore(label, attributes, secret)
+        return withService { connection, service, session ->
             val collection = runCatching { service.ReadAlias("default")?.path }
                 .getOrNull()
                 ?.takeIf { it.isNotBlank() && it != "/" }
@@ -73,22 +79,48 @@ internal object DesktopSecretStore {
             )
             true
         } ?: false
+    }
 
     /** Forgets everything stored under [attributes]. */
-    fun remove(attributes: Map<String, String>): Boolean = withService { connection, service, _ ->
-        val found = service.SearchItems(attributes)
-        (found.unlocked + found.locked).forEach { path ->
-            runCatching {
-                connection.getRemoteObject(
-                    SecretServiceApi.BUS_NAME,
-                    path.path,
-                    SecretServiceApi.Item::class.java,
-                ).Delete()
+    fun remove(attributes: Map<String, String>): Boolean {
+        if (DesktopPlatform.isMac) return macRemove(attributes)
+        return withService { connection, service, _ ->
+            val found = service.SearchItems(attributes)
+            (found.unlocked + found.locked).forEach { path ->
+                runCatching {
+                    connection.getRemoteObject(
+                        SecretServiceApi.BUS_NAME,
+                        path.path,
+                        SecretServiceApi.Item::class.java,
+                    ).Delete()
+                }
             }
-        }
-        true
-    } ?: false
+            true
+        } ?: false
+    }
 
     /** Whether a store is actually reachable, for the settings screen to say so. */
-    fun isAvailable(): Boolean = withService { _, _, _ -> true } == true
+    fun isAvailable(): Boolean = when {
+        DesktopPlatform.isMac -> DesktopMacKeychain.isAvailable()
+        DesktopPlatform.isLinux -> withService { _, _, _ -> true } == true
+        else -> false
+    }
+
+    private fun macAccount(attributes: Map<String, String>): String =
+        attributes["account"]
+            ?: attributes.entries.sortedBy { it.key }.joinToString("|") { "${it.key}=${it.value}" }
+
+    private fun macLookup(attributes: Map<String, String>): ByteArray? =
+        DesktopMacKeychain.findGenericPassword(KEYCHAIN_SERVICE, macAccount(attributes))
+
+    private fun macStore(label: String, attributes: Map<String, String>, secret: ByteArray): Boolean =
+        DesktopMacKeychain.storeGenericPassword(
+            service = KEYCHAIN_SERVICE,
+            account = macAccount(attributes),
+            label = label,
+            secret = secret,
+        )
+
+    private fun macRemove(attributes: Map<String, String>): Boolean =
+        DesktopMacKeychain.deleteGenericPassword(KEYCHAIN_SERVICE, macAccount(attributes))
 }

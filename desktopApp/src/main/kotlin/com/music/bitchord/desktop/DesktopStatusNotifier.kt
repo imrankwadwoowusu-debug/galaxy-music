@@ -70,6 +70,10 @@ internal class DesktopStatusNotifierController(
 
     /** Hands the tray the application's own artwork. */
     fun setIcon(svg: ByteArray) {
+        if (DesktopPlatform.isMac) {
+            DesktopMacStatusItem.setIcon(svg)
+            return
+        }
         if (!isLinuxSession()) {
             // AWT wants one image at the size the tray asks for, not a ladder of pixmaps for a
             // shell to choose from.
@@ -84,6 +88,10 @@ internal class DesktopStatusNotifierController(
 
     fun start() {
         // Windows has no StatusNotifierItem; its tray is AWT's — see [DesktopAwtTray].
+        if (DesktopPlatform.isMac) {
+            DesktopMacStatusItem.start(onActivate)
+            return
+        }
         if (!isLinuxSession()) {
             DesktopAwtTray.start(onActivate)
             return
@@ -138,6 +146,10 @@ internal class DesktopStatusNotifierController(
     }
 
     fun stop() {
+        if (DesktopPlatform.isMac) {
+            DesktopMacStatusItem.stop()
+            return
+        }
         if (!isLinuxSession()) {
             DesktopAwtTray.stop()
             return
@@ -156,6 +168,10 @@ internal class DesktopStatusNotifierController(
     }
 
     fun update(title: String?, isPlaying: Boolean) {
+        if (DesktopPlatform.isMac) {
+            DesktopMacStatusItem.update()
+            return
+        }
         if (!isLinuxSession()) {
             DesktopAwtTray.update(title, isPlaying)
             return

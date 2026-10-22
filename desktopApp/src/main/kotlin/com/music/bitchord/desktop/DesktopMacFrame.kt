@@ -4,6 +4,7 @@ import com.sun.jna.Callback
 import com.sun.jna.Library
 import com.sun.jna.Native
 import com.sun.jna.NativeLibrary
+import com.sun.jna.Memory
 import com.sun.jna.Pointer
 import java.awt.Color
 import java.awt.Toolkit
@@ -16,6 +17,24 @@ import java.util.concurrent.atomic.AtomicBoolean
  * behind the window chrome.
  */
 internal object DesktopMacFrame {
+
+    /** NSWindowStyleMaskResizable. A borderless window cannot enter full screen without it. */
+    private const val RESIZABLE = 1L shl 3
+
+    /** NSWindowStyleMaskFullScreen. */
+    private const val FULL_SCREEN_STYLE = 1L shl 14
+
+    /** NSWindowStyleMaskFullSizeContentView. Keeps content under a transparent title bar. */
+    private const val FULL_SIZE_CONTENT = 1L shl 15
+
+    /** NSWindowCollectionBehaviorFullScreenPrimary. */
+    private const val FULL_SCREEN_PRIMARY = 1L shl 7
+
+    /** NSWindowTitleHidden. */
+    private const val TITLE_HIDDEN = 1L
+
+    /** NSEventModifierFlagOption. */
+    private const val OPTION_FLAG = 1L shl 19
 
     private val installed = AtomicBoolean(false)
     private var windowPtr: Pointer? = null
@@ -66,6 +85,23 @@ internal object DesktopMacFrame {
         }
     }
 
+    private val fullScreenCallbackRef = object : ActionCallback {
+        override fun invoke(self: Pointer, _cmd: Pointer, arg: Pointer) {
+            val on = isFullScreen()
+            DesktopWindowMode.noteNativeFullScreen(on)
+            updateCornerRadius(on || DesktopWindowMode.maximized.value)
+        }
+    }
+
+    private val zoomCallbackRef = object : ActionCallback {
+        override fun invoke(self: Pointer, _cmd: Pointer, arg: Pointer) {
+            if (isFullScreen()) return
+            val zoomed = isZoomed()
+            DesktopWindowMode.noteNativeZoomed(zoomed)
+            updateCornerRadius(zoomed)
+        }
+    }
+
     private val helperInstance: Pointer? by lazy {
         initHelper()
     }
@@ -99,6 +135,10 @@ internal object DesktopMacFrame {
             o.class_addMethod(cls, sel, callbackRef, "v@:@")
             val selActivate = o.sel_registerName("activateApp:")
             o.class_addMethod(cls, selActivate, activateCallbackRef, "v@:@")
+            val selFullScreen = o.sel_registerName("fullScreenNote:")
+            o.class_addMethod(cls, selFullScreen, fullScreenCallbackRef, "v@:@")
+            val selZoom = o.sel_registerName("zoomNote:")
+            o.class_addMethod(cls, selZoom, zoomCallbackRef, "v@:@")
             o.objc_registerClassPair(cls)
         }
         val selAlloc = o.sel_registerName("alloc")
@@ -312,6 +352,66 @@ internal object DesktopMacFrame {
     }
 
     /**
+     * Enters or leaves the system full screen, the Space the green button opens.
+     *
+     * @return whether the window is entering full screen, or null when AppKit could not take the call.
+     */
+    fun toggleFullScreen(): Boolean? {
+        if (!DesktopPlatform.isMac || !isMainThread()) return null
+        val o = objc ?: return null
+        val send = msgSend ?: return null
+        val nsWindow = windowPtr ?: return null
+        val entering = !hasFullScreenMask(nsWindow)
+        prepareFullScreen(nsWindow)
+        send.invoke(arrayOf(nsWindow, o.sel_registerName("toggleFullScreen:"), Pointer.NULL))
+        DesktopTrackLog.log("DesktopMacFrame: toggleFullScreen entering=$entering")
+        return entering
+    }
+
+    /** What the green button is doing right now. */
+    fun isFullScreen(): Boolean {
+        if (!DesktopPlatform.isMac) return false
+        val nsWindow = windowPtr ?: return false
+        return hasFullScreenMask(nsWindow)
+    }
+
+    /**
+     * Option-click on the green button, and a title-bar double click when the system setting says zoom.
+     * Fills the screen without opening a new Space.
+     */
+    fun performZoom(): Boolean {
+        if (!DesktopPlatform.isMac || !isMainThread()) return false
+        val o = objc ?: return false
+        val send = msgSend ?: return false
+        val nsWindow = windowPtr ?: return false
+        send.invoke(arrayOf(nsWindow, o.sel_registerName("zoom:"), Pointer.NULL))
+        val zoomed = isZoomed()
+        DesktopWindowMode.noteNativeZoomed(zoomed)
+        updateCornerRadius(zoomed || isFullScreen())
+        return true
+    }
+
+    /** Option is held on the event AppKit is delivering, which is the green button's alternate action. */
+    fun optionIsDown(): Boolean {
+        if (!DesktopPlatform.isMac) return false
+        val o = objc ?: return false
+        val send = msgSend ?: return false
+        val event = currentEvent() ?: return false
+        val flags = (send.invoke(Long::class.java, arrayOf(event, o.sel_registerName("modifierFlags"))) as? Number)?.toLong() ?: 0L
+        return flags and OPTION_FLAG != 0L
+    }
+
+    /** Double-click on the title bar, following System Settings rather than always zooming. */
+    fun onTitleBarDoubleClick() {
+        if (!DesktopPlatform.isMac || !isMainThread()) return
+        when (macTitleBarAction(doubleClickPreference())) {
+            MacTitleBarAction.Zoom -> performZoom()
+            MacTitleBarAction.Minimize -> miniaturize()
+            MacTitleBarAction.Ignore -> Unit
+        }
+    }
+
+    /**
      * Hands window dragging to AppKit via -[NSWindow performWindowDragWithEvent:],
      * providing native macOS ProMotion dragging, Spaces switching, and Mission Control support.
      */
@@ -511,6 +611,7 @@ internal object DesktopMacFrame {
         val nsWindow = windowPtr ?: return
 
         val effectView = ensureWindowAndEffectView(o, send, nsWindow) ?: return
+        observeFullScreen(nsWindow)
 
         val selSetHidden = o.sel_registerName("setHidden:")
         val selSetMaterial = o.sel_registerName("setMaterial:")
@@ -527,6 +628,113 @@ internal object DesktopMacFrame {
             send.invoke(arrayOf(effectView, selSetHidden, false))
             DesktopTrackLog.log("DesktopMacFrame: backdrop applied material $material (nativeKind $nativeKind)")
         }
+    }
+
+    private var fullScreenObserved = false
+
+    private fun observeFullScreen(nsWindow: Pointer) {
+        if (fullScreenObserved) return
+        val o = objc ?: return
+        val send = msgSend ?: return
+        val centerClass = o.objc_getClass("NSNotificationCenter") ?: return
+        val center = send.invokePointer(arrayOf(centerClass, o.sel_registerName("defaultCenter"))) ?: return
+        val helper = helperInstance ?: return
+        listOf(
+            "NSWindowDidEnterFullScreenNotification" to "fullScreenNote:",
+            "NSWindowDidExitFullScreenNotification" to "fullScreenNote:",
+            "NSWindowDidEndLiveResizeNotification" to "zoomNote:",
+        ).forEach { (name, note) ->
+            val label = nsString(name) ?: return@forEach
+            send.invoke(
+                arrayOf(
+                    center,
+                    o.sel_registerName("addObserver:selector:name:object:"),
+                    helper,
+                    o.sel_registerName(note),
+                    label,
+                    nsWindow,
+                ),
+            )
+        }
+        fullScreenObserved = true
+    }
+
+    private fun prepareFullScreen(nsWindow: Pointer) {
+        val o = objc ?: return
+        val send = msgSend ?: return
+        val style = longMsg(nsWindow, o.sel_registerName("styleMask"))
+        if (style != null) {
+            val wanted = style or RESIZABLE or FULL_SIZE_CONTENT
+            if (wanted != style) {
+                send.invoke(arrayOf(nsWindow, o.sel_registerName("setStyleMask:"), wanted))
+                DesktopTrackLog.log("DesktopMacFrame: styleMask $style -> $wanted")
+            }
+        }
+        val behavior = longMsg(nsWindow, o.sel_registerName("collectionBehavior")) ?: 0L
+        if (behavior and FULL_SCREEN_PRIMARY == 0L) {
+            send.invoke(arrayOf(nsWindow, o.sel_registerName("setCollectionBehavior:"), behavior or FULL_SCREEN_PRIMARY))
+        }
+        send.invoke(arrayOf(nsWindow, o.sel_registerName("setTitlebarAppearsTransparent:"), true))
+        send.invoke(arrayOf(nsWindow, o.sel_registerName("setTitleVisibility:"), TITLE_HIDDEN))
+        for (button in 0L..2L) {
+            val standard = send.invokePointer(arrayOf(nsWindow, o.sel_registerName("standardWindowButton:"), button))
+            if (standard != null && standard != Pointer.NULL) {
+                send.invoke(arrayOf(standard, o.sel_registerName("setHidden:"), true))
+            }
+        }
+    }
+
+    private fun isZoomed(): Boolean {
+        val o = objc ?: return false
+        val send = msgSend ?: return false
+        val nsWindow = windowPtr ?: return false
+        return send.invoke(Boolean::class.java, arrayOf(nsWindow, o.sel_registerName("isZoomed"))) as? Boolean ?: false
+    }
+
+    private fun hasFullScreenMask(nsWindow: Pointer): Boolean {
+        val o = objc ?: return false
+        return ((longMsg(nsWindow, o.sel_registerName("styleMask")) ?: 0L) and FULL_SCREEN_STYLE) != 0L
+    }
+
+    private fun miniaturize() {
+        val o = objc ?: return
+        val send = msgSend ?: return
+        val nsWindow = windowPtr ?: return
+        send.invoke(arrayOf(nsWindow, o.sel_registerName("miniaturize:"), Pointer.NULL))
+    }
+
+    private fun doubleClickPreference(): String? {
+        val o = objc ?: return null
+        val send = msgSend ?: return null
+        val defaultsClass = o.objc_getClass("NSUserDefaults") ?: return null
+        val defaults = send.invokePointer(arrayOf(defaultsClass, o.sel_registerName("standardUserDefaults"))) ?: return null
+        val key = nsString("AppleActionOnDoubleClick") ?: return null
+        val value = send.invokePointer(arrayOf(defaults, o.sel_registerName("stringForKey:"), key)) ?: return null
+        val utf8 = send.invokePointer(arrayOf(value, o.sel_registerName("UTF8String"))) ?: return null
+        return runCatching { utf8.getString(0) }.getOrNull()
+    }
+
+    private fun currentEvent(): Pointer? {
+        val o = objc ?: return null
+        val send = msgSend ?: return null
+        val appClass = o.objc_getClass("NSApplication") ?: return null
+        val app = send.invokePointer(arrayOf(appClass, o.sel_registerName("sharedApplication"))) ?: return null
+        val event = send.invokePointer(arrayOf(app, o.sel_registerName("currentEvent")))
+        return event?.takeIf { it != Pointer.NULL }
+    }
+
+    private fun longMsg(receiver: Pointer, selector: Pointer): Long? =
+        (msgSend?.invoke(Long::class.java, arrayOf(receiver, selector)) as? Number)?.toLong()
+
+    private fun nsString(value: String): Pointer? {
+        val o = objc ?: return null
+        val send = msgSend ?: return null
+        val nsStringClass = o.objc_getClass("NSString") ?: return null
+        val bytes = value.toByteArray(Charsets.UTF_8)
+        val memory = Memory((bytes.size + 1).toLong())
+        memory.write(0, bytes, 0, bytes.size)
+        memory.setByte(bytes.size.toLong(), 0)
+        return send.invokePointer(arrayOf(nsStringClass, o.sel_registerName("stringWithUTF8String:"), memory))
     }
 
     private fun pinConstraints(view: Pointer, target: Pointer) {
@@ -548,3 +756,22 @@ internal object DesktopMacFrame {
         }
     }
 }
+
+/** What a double click on the title bar does, from AppleActionOnDoubleClick. */
+internal enum class MacTitleBarAction { Zoom, Minimize, Ignore }
+
+/**
+ * "Maximize" is the value System Settings stores for zoom. When the key has never been written,
+ * zoom matches the green button's option-click.
+ */
+internal fun macTitleBarAction(preference: String?): MacTitleBarAction = when (preference) {
+    "Minimize" -> MacTitleBarAction.Minimize
+    "None" -> MacTitleBarAction.Ignore
+    else -> MacTitleBarAction.Zoom
+}
+
+/** A plain click on the green button enters full screen. Option-click zooms. */
+internal enum class MacGreenButton { FullScreen, Zoom }
+
+internal fun macGreenButton(optionDown: Boolean): MacGreenButton =
+    if (optionDown) MacGreenButton.Zoom else MacGreenButton.FullScreen

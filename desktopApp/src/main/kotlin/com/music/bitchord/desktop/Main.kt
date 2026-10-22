@@ -27,6 +27,7 @@ import kotlin.math.roundToInt
 import org.jetbrains.compose.resources.painterResource
 
 fun main() {
+    DesktopMacShell.prepare()
     // Before any WebView exists, so the sign-in window can start over with an empty jar.
     DesktopWebCookies.install()
     DesktopWindowVisibility.install()
@@ -67,6 +68,15 @@ fun main() {
 }
 
 private fun desktopMain() = application {
+    // The Dock keeps the count for as long as the process does, including while the window is
+    // put away to the menu bar.
+    LaunchedEffect(Unit) {
+        if (!DesktopPlatform.isMac) return@LaunchedEffect
+        DesktopDownloadQueue.active.collect { items ->
+            val inFlight = items.values.count { it.state !is DesktopDownloadState.Failed }
+            DesktopMacDock.setBadge(dockBadgeLabel(inFlight))
+        }
+    }
     // Closing puts the window away rather than ending the process, while there is a tray icon to
     // bring it back from — see [DesktopWindowVisibility].
     val visible by DesktopWindowVisibility.visible.collectAsState()
@@ -87,9 +97,11 @@ private fun desktopMain() = application {
         snapshotFlow { state.placement }.collect(DesktopWindowMode::adopt)
     }
     val maximized by DesktopWindowMode.maximized.collectAsState()
-    LaunchedEffect(maximized) {
+    val fullScreen by DesktopWindowMode.fullScreen.collectAsState()
+    LaunchedEffect(maximized, fullScreen) {
         if (DesktopPlatform.isMac) {
-            DesktopMacFrame.updateCornerRadius(maximized)
+            DesktopMacFrame.updateCornerRadius(maximized || fullScreen)
+            DesktopMacAppMenu.refresh()
         }
     }
     Window(
@@ -140,6 +152,10 @@ private fun desktopMain() = application {
                 (openingSize.width.value * transform.scaleX).roundToInt(),
                 (openingSize.height.value * transform.scaleY).roundToInt(),
             )
+            if (DesktopPlatform.isMac) {
+                DesktopDockIcon.install()
+                DesktopMacAppMenu.install()
+            }
             if (DesktopPlatform.isWindows && DesktopWindowsFrame.install("BitChord")) {
                 DesktopWindowBackdrop.apply()
             } else if (DesktopPlatform.isMac && DesktopMacFrame.install(composeWindow)) {
@@ -152,7 +168,12 @@ private fun desktopMain() = application {
                     if (!DesktopWindowsFrame.minimize()) state.isMinimized = true
                 },
                 toggleMaximize = {
-                    if (!DesktopWindowsFrame.toggleMaximize()) {
+                    if (DesktopPlatform.isMac) {
+                        when (macGreenButton(DesktopMacFrame.optionIsDown())) {
+                            MacGreenButton.Zoom -> DesktopMacFrame.performZoom()
+                            MacGreenButton.FullScreen -> DesktopWindowMode.toggle()
+                        }
+                    } else if (!DesktopWindowsFrame.toggleMaximize()) {
                         // An undecorated AWT window otherwise maximizes to the monitor bounds on
                         // Windows when the native frame bridge is unavailable. Give AWT the
                         // monitor's usable work area before Compose switches the placement.

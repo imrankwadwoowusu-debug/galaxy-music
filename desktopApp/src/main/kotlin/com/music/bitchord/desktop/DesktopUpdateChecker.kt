@@ -66,16 +66,18 @@ internal object DesktopUpdateChecker {
     }.getOrNull()
 
     /**
-     * The release names its files `BitChord-<version>-windows-x64-setup.exe` and
-     * `BitChord-<version>-linux-x86_64.AppImage` (see .github/workflows/release.yml); match on the
-     * platform part so a version change does not matter.
+     * The release names its files `BitChord-<version>-windows-x64-setup.exe`,
+     * `BitChord-<version>-linux-x86_64.AppImage`, and `BitChord-<version>-macos-arm64.dmg`
+     * (see .github/workflows/release.yml); match on the platform part so a version change
+     * does not matter.
      */
     private fun installerUrl(release: JsonObject): String? {
-        val suffixes = when {
-            DesktopPlatform.isWindows -> listOf("-windows-x64-setup.exe")
-            DesktopPlatform.isLinux -> listOf(".AppImage", "-linux-amd64.deb")
-            else -> return null
-        }
+        val suffixes = installerSuffixes(
+            isWindows = DesktopPlatform.isWindows,
+            isLinux = DesktopPlatform.isLinux,
+            isMac = DesktopPlatform.isMac,
+            isArm64 = DesktopPlatform.isArm64,
+        ) ?: return null
         val assets = release["assets"]?.jsonArray?.mapNotNull { it as? JsonObject }.orEmpty()
         for (suffix in suffixes) {
             val hit = assets.firstOrNull { asset ->
@@ -85,6 +87,23 @@ internal object DesktopUpdateChecker {
             hit?.get("browser_download_url")?.jsonPrimitive?.contentOrNull?.let { return it }
         }
         return null
+    }
+
+    /**
+     * Preferred installer name endings for the running OS, in download priority order.
+     * Null when this host is not a desktop we ship packages for.
+     */
+    internal fun installerSuffixes(
+        isWindows: Boolean,
+        isLinux: Boolean,
+        isMac: Boolean,
+        isArm64: Boolean,
+    ): List<String>? = when {
+        isWindows -> listOf("-windows-x64-setup.exe")
+        isLinux -> listOf(".AppImage", "-linux-amd64.deb")
+        isMac && isArm64 -> listOf("-macos-arm64.dmg", "-macos-arm64.pkg")
+        isMac -> listOf("-macos-x64.dmg", "-macos-x64.pkg")
+        else -> null
     }
 
     private class Parsed(val parts: List<Int>, val preRelease: Boolean)

@@ -1,6 +1,8 @@
 package com.music.bitchord.desktop
 
 import com.music.bitchord.data.model.Song
+import java.awt.FileDialog
+import java.awt.Frame
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -55,16 +57,39 @@ object DesktopLocalMusic {
     /**
      * Asks for a folder with the platform's own chooser.
      *
-     * Swing's, not a drawn one: this is a file-system question, and the desktop already has an
-     * answer for it that knows about bookmarks, hidden files and network mounts.
+     * On macOS that is the system open panel, which knows the sidebar, iCloud and hidden files.
+     * Elsewhere it stays Swing's chooser.
      */
-    fun chooseFolder(): Path? = runCatching {
+    fun chooseFolder(): Path? = if (DesktopPlatform.isMac) chooseFolderMac() else chooseFolderSwing()
+
+    private fun chooseFolderMac(): Path? = runCatching {
+        val previous = System.getProperty(DIRECTORY_DIALOG)
+        System.setProperty(DIRECTORY_DIALOG, "true")
+        try {
+            val dialog = FileDialog(null as Frame?, "Local music folder", FileDialog.LOAD)
+            dialog.directory = (folder() ?: Paths.get(System.getProperty("user.home"))).toString()
+            dialog.isVisible = true
+            chosenDirectory(dialog.directory, dialog.file)
+        } finally {
+            if (previous == null) System.clearProperty(DIRECTORY_DIALOG) else System.setProperty(DIRECTORY_DIALOG, previous)
+        }
+    }.getOrNull()
+
+    private fun chooseFolderSwing(): Path? = runCatching {
         val chooser = javax.swing.JFileChooser(folder()?.toFile() ?: java.io.File(System.getProperty("user.home")))
         chooser.fileSelectionMode = javax.swing.JFileChooser.DIRECTORIES_ONLY
         chooser.dialogTitle = "Local music folder"
         if (chooser.showOpenDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION) return null
         chooser.selectedFile?.toPath()
     }.getOrNull()
+
+    /** What the macOS open panel reports: the parent in [directory], the chosen folder in [file]. */
+    internal fun chosenDirectory(directory: String?, file: String?): Path? {
+        if (directory.isNullOrBlank() || file.isNullOrBlank()) return null
+        return Paths.get(directory, file)
+    }
+
+    private const val DIRECTORY_DIALOG = "apple.awt.fileDialogForDirectories"
 
     private fun scanDirectory(root: Path, filterNonMusic: Boolean): List<Song> = buildList {
         runCatching {

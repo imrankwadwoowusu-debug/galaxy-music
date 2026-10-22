@@ -210,7 +210,7 @@ internal object DesktopDiscordRpc {
             val gatewayFailure = runCatching {
                 val client = rpc ?: KizzyRPC(
                     token = _token.value,
-                    os = if (DesktopPlatform.isWindows) "Windows" else "Linux",
+                    os = discordOs(),
                     browser = "Discord Client",
                     device = "desktop",
                     userAgent = USER_AGENT,
@@ -332,7 +332,7 @@ internal object DesktopDiscordRpc {
      */
     private val superProperties: String by lazy {
         val fields = mapOf(
-            "os" to if (DesktopPlatform.isWindows) "Windows" else "Linux",
+            "os" to discordOs(),
             "browser" to "Discord Client",
             "device" to "",
             "system_locale" to Locale.getDefault().toString(),
@@ -354,6 +354,13 @@ internal object DesktopDiscordRpc {
     private fun superProperties(): String = superProperties
 
     private fun watchUrl(song: Song) = "https://music.youtube.com/watch?v=${song.videoId}"
+
+    /** Discord's own client fingerprint string for the host OS. */
+    private fun discordOs(): String = when {
+        DesktopPlatform.isWindows -> "Windows"
+        DesktopPlatform.isMac -> "Mac OS X"
+        else -> "Linux"
+    }
 
     private const val KEY_TOKEN = "discord_token"
     private const val KEY_USERNAME = "discord_username"

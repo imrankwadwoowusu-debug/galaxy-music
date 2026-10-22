@@ -11,12 +11,10 @@ internal object DesktopTrackLog {
 
     private val clock = DateTimeFormatter.ofPattern("HH:mm:ss")
 
-    /** `$XDG_STATE_HOME/bitchord/desktop.log`, or the usual default under $HOME. */
+    /** Platform state dir (`~/Library/Logs/BitChord` on macOS, XDG elsewhere) / `desktop.log`. */
     private val file: Path? by lazy {
         runCatching {
-            val state = System.getenv("XDG_STATE_HOME")?.takeIf { it.isNotBlank() }
-                ?: "${System.getProperty("user.home")}/.local/state"
-            val directory = Path.of(state, "bitchord")
+            val directory = DesktopPaths.stateHome()
             Files.createDirectories(directory)
             directory.resolve("desktop.log")
         }.getOrNull()

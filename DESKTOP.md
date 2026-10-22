@@ -12,6 +12,10 @@ On macOS (Apple Silicon or Intel), run it with a Java 21 JDK available in your e
 ./gradlew :desktopApp:run
 ```
 
+macOS stores app data under `~/Library/Application Support/BitChord`, cache under
+`~/Library/Caches/BitChord`, and logs under `~/Library/Logs/BitChord`. Media keys and
+Control Center use the bundled Now Playing bridge (`libbitchord_nowplaying.dylib`).
+
 On Linux, run it with the JDK and native libraries available in the shell:
 
 On NixOS:

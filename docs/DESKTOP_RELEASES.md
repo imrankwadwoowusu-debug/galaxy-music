@@ -51,17 +51,17 @@ patterns, where `<v>` is the version from section 1:
 Rules:
 
 - Keep the platform tail exactly as above. The update check matches on the ending
-  (`.AppImage`, then `-linux-amd64.deb` on Linux; `-windows-x64-setup.exe` on Windows), not on the
-  version, so a rename here silently breaks it.
-- A new Linux variant (arm64, Flatpak, tar.gz) gets its own tail and is **added to
-  `installerUrl()` in `DesktopUpdateChecker.kt`**. Pick by architecture; today the check assumes
-  x86_64.
+  (`.AppImage`, then `-linux-amd64.deb` on Linux; `-windows-x64-setup.exe` on Windows;
+  `-macos-arm64.dmg` / `-macos-x64.dmg` on macOS), not on the version, so a rename here
+  silently breaks it.
+- A new Linux or macOS variant (arm64 Linux, Flatpak, tar.gz) gets its own tail and is **added to
+  `installerSuffixes()` in `DesktopUpdateChecker.kt`**. Linux today assumes x86_64; macOS picks
+  arm64 vs x64 from `os.arch`.
 - Upload files to the release, do not rely on the generated source archives.
 
 macOS builds are unsigned. Clear the quarantine flag with `xattr -cr /Applications/BitChord.app`.
 If the app will not start, a missing library may need installing first with Homebrew
-(`brew install <library>`; the exact library still has to be confirmed). The update check does not
-look for macOS files yet, so Mac users get the release page.
+(`brew install <library>`; the exact library still has to be confirmed).
 
 ## 4. How the app finds an update
 
