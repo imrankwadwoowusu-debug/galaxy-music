@@ -4692,7 +4692,15 @@ class PlaybackService : MediaLibraryService() {
                 if (standbyPlayer.playbackState != Player.STATE_READY ||
                     !standbyPlayer.isCurrentMediaItemSeekable
                 ) {
-                    TrackLog.w("BitChord", "upgrade abandoned: standby deck is not seekable", about = mediaId)
+                    val marked = standbyPlayer.currentMediaItem?.localConfiguration?.uri
+                    TrackLog.w(
+                        "BitChord",
+                        "upgrade abandoned: standby deck is not seekable" +
+                            " (dur=${standbyPlayer.duration}" +
+                            " buffered=${standbyPlayer.bufferedPosition}" +
+                            " url=${marked?.let { QualityUpgrade.forcedStream(it)?.url }})",
+                        about = mediaId,
+                    )
                     QualityUpgrade.shelve(mediaId, stream)
                     return false
                 }
@@ -4781,8 +4789,59 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
 
+            // A blend between decks this far apart is a skip, not a blend.
+            // The measurement is noisy, so the loop stopping on a large
+            // residual means the alignment was never established; keep the
+            // audio that is already playing rather than hand over misaligned.
+            val handoverDrift = syncResidual
+            if (willPlay && handoverDrift != null && abs(handoverDrift) > MAX_HANDOVER_DRIFT_MS) {
+                TrackLog.w("BitChord", "upgrade abandoned: decks are ${handoverDrift}ms apart at handover", about = mediaId)
+                QualityUpgrade.shelve(mediaId, stream)
+                return false
+            }
+
             swappingMediaId = mediaId
-            standbyPlayer.volume = 1f
+
+            if (willPlay) {
+                // Equal-power blend across the handover. Both decks hold the
+                // same content at the same position, so the sum keeps a
+                // constant level while the listener never hears a seam.
+                val fadeStart = SystemClock.elapsedRealtime()
+                try {
+                    while (coroutineContext.isActive) {
+                        val elapsed = SystemClock.elapsedRealtime() - fadeStart
+                        val progress = (elapsed.toFloat() / SOURCE_SWAP_CROSSFADE_MS).coerceIn(0f, 1f)
+
+                        if (player !== activePlayer ||
+                            activePlayer.currentMediaItemIndex != currentIndex ||
+                            activePlayer.currentMediaItem?.mediaId != mediaId
+                        ) {
+                            return false
+                        }
+
+                        if (standbyPlayer.playWhenReady != activePlayer.playWhenReady) {
+                            standbyPlayer.playWhenReady = activePlayer.playWhenReady
+                        }
+
+                        val inGain = sin(progress * (PI / 2.0)).toFloat()
+                        val outGain = cos(progress * (PI / 2.0)).toFloat()
+                        standbyPlayer.volume = inGain
+                        activePlayer.volume = outGain
+                        val swapTrim = 1f / sqrt((inGain + outGain).coerceAtLeast(1f))
+                        loudnessA.setBlendTrim(swapTrim)
+                        loudnessB.setBlendTrim(swapTrim)
+
+                        if (progress >= 1f) break
+                        delay(16)
+                    }
+                } finally {
+                    loudnessA.setBlendTrim(1f)
+                    loudnessB.setBlendTrim(1f)
+                }
+            } else {
+                standbyPlayer.volume = 1f
+            }
+
             adoptPlayerForVersionSwap(
                 outgoing = activePlayer,
                 incoming = standbyPlayer,
@@ -9207,8 +9266,23 @@ class PlaybackService : MediaLibraryService() {
          * ordinary swap, minutes from any blend, is as immediate as it was.
          */
         const val UPGRADE_AFTER_CROSSFADE_MS = 5_000L
-        private const val SYNC_MAX_SEEKS = 5
-        private const val SYNC_TOLERANCE_MS = 20L
+        private const val SYNC_MAX_SEEKS = 8
+
+        /**
+         * Close enough to hand over. A residual this size is inaudible under
+         * the blend; 20 ms and up reads as a small skip on transients, which
+         * is what the extra seeks above are spent to avoid.
+         */
+        private const val SYNC_TOLERANCE_MS = 10L
+
+        /**
+         * Anything wider than this at the moment of handover is audible as a
+         * skip, so the swap is abandoned instead of blending across it.
+         */
+        private const val MAX_HANDOVER_DRIFT_MS = 60L
+
+        /** Length of the equal-power blend when the aligned deck takes over. */
+        private const val SOURCE_SWAP_CROSSFADE_MS = 300L
 
         /**
          * A gap this wide is not a seek the lead can pay back: the standby deck
