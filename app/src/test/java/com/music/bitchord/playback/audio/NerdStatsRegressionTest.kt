@@ -174,4 +174,31 @@ class NerdStatsRegressionTest {
             assertEquals("$rate Hz", rate > 48_000, s.isHiRes)
         }
     }
+    }
+
+    @Test
+    fun `alignment offset and residual are recorded, cleared on null, and forgotten with track`() {
+        NerdStats.forgetLastSession()
+        assertNull(NerdStats.getAlignmentOffset("track_1"))
+        assertNull(NerdStats.getAlignmentResidual("track_1"))
+
+        NerdStats.recordAlignmentOffset("track_1", 145L, -8L)
+        assertEquals(145L, NerdStats.getAlignmentOffset("track_1"))
+        assertEquals(-8L, NerdStats.getAlignmentResidual("track_1"))
+
+        // Updating without residual removes stale residual
+        NerdStats.recordAlignmentOffset("track_1", 20L, null)
+        assertEquals(20L, NerdStats.getAlignmentOffset("track_1"))
+        assertNull(NerdStats.getAlignmentResidual("track_1"))
+
+        // clearDeclared(trackId) clears alignment telemetry
+        NerdStats.clearDeclared("track_1")
+        assertNull(NerdStats.getAlignmentOffset("track_1"))
+
+        // clearAlignmentOffset(mediaId) clears explicitly
+        NerdStats.recordAlignmentOffset("track_2", -35L, 4L)
+        NerdStats.clearAlignmentOffset("track_2")
+        assertNull(NerdStats.getAlignmentOffset("track_2"))
+        assertNull(NerdStats.getAlignmentResidual("track_2"))
+    }
 }

@@ -62,6 +62,14 @@ object NerdStats {
         val pcmDataRateKbps: Int? = null,
         /** The queue item this describes; see [publish]. */
         val mediaId: String? = null,
+        /**
+         * Total time shift applied to line the upgraded stream up with the one it
+         * replaced (content offset plus the standby deck's start-latency lead), in
+         * ms. Null when no alignment ran; 0 is a real result, not "absent".
+         */
+        val alignmentOffsetMs: Long? = null,
+        /** How far off the two streams still measured just before the fade, in ms. */
+        val alignmentResidualMs: Long? = null,
     ) {
         /**
          * Whether what arrived is measurably worse than what was promised.
@@ -335,6 +343,34 @@ object NerdStats {
         sources[mediaId] = source
     }
 
+    private val alignmentOffsets = ConcurrentHashMap<String, Long>()
+    private val alignmentResiduals = ConcurrentHashMap<String, Long>()
+
+    fun recordAlignmentOffset(mediaId: String?, offsetMs: Long?, residualMs: Long? = null) {
+        if (mediaId.isNullOrBlank()) return
+        if (offsetMs == null) {
+            clearAlignmentOffset(mediaId)
+        } else {
+            if (alignmentOffsets.size >= MAX_REMEMBERED) {
+                alignmentOffsets.clear()
+                alignmentResiduals.clear()
+            }
+            alignmentOffsets[mediaId] = offsetMs
+            if (residualMs != null) alignmentResiduals[mediaId] = residualMs else alignmentResiduals.remove(mediaId)
+        }
+    }
+
+    fun getAlignmentOffset(mediaId: String?): Long? = mediaId?.let { alignmentOffsets[it] }
+
+    fun getAlignmentResidual(mediaId: String?): Long? = mediaId?.let { alignmentResiduals[it] }
+
+    fun clearAlignmentOffset(mediaId: String?) {
+        if (mediaId != null) {
+            alignmentOffsets.remove(mediaId)
+            alignmentResiduals.remove(mediaId)
+        }
+    }
+
     fun exactSourceFor(mediaId: String?): String? = mediaId?.let { sources[it] }
 
     fun sourceFor(mediaId: String?): String? {
@@ -392,6 +428,7 @@ object NerdStats {
         if (trackId != null) {
             declared.remove(trackId)
             sources.remove(trackId)
+            clearAlignmentOffset(trackId)
         }
     }
 
@@ -461,6 +498,8 @@ object NerdStats {
         picked.clear()
         declared.clear()
         sources.clear()
+        alignmentOffsets.clear()
+        alignmentResiduals.clear()
     }
 
     private const val MAX_REMEMBERED = 64

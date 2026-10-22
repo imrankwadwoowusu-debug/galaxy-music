@@ -384,6 +384,18 @@ internal fun SleeveNerdStats(song: Song, modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier,
     ) {
+        nerdStats?.alignmentOffsetMs?.let { offset ->
+            val residual = nerdStats?.alignmentResidualMs
+            Text(
+                text = if (residual != null) "Aligned %+d ms (Δ%+d)".format(Locale.ROOT, offset, residual)
+                else "Aligned %+d ms".format(Locale.ROOT, offset),
+                style = nerdStyle,
+                color = Color.White.copy(alpha = 0.65f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+        }
         nerdStats?.describe()?.let { stats ->
             Text(
                 text = stats,

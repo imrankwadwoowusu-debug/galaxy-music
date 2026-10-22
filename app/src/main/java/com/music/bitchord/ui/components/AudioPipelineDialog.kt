@@ -282,6 +282,14 @@ fun AudioPipelineDialog(
                 PipelineRow(stringResource(R.string.pipeline_bitrate), bitrate)
                 PipelineRow(stringResource(R.string.pipeline_pcm_data_rate), pcmDataRate)
                 PipelineRow(stringResource(R.string.pipeline_channels), channels)
+                nerdStats?.alignmentOffsetMs?.let { offset ->
+                    val residual = nerdStats?.alignmentResidualMs
+                    PipelineRow(
+                        stringResource(R.string.pipeline_alignment),
+                        if (residual != null) "%+d ms (residual %+d ms)".format(Locale.ROOT, offset, residual)
+                        else "%+d ms".format(Locale.ROOT, offset),
+                    )
+                }
             }
 
             // 2. Decoder Stage
