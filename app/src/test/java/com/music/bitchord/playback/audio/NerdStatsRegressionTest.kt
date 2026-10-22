@@ -33,13 +33,19 @@ class NerdStatsRegressionTest {
         NerdStats.forgetLastSession()
     }
 
-    private fun snapshot(mediaId: String?, mime: String = "audio/opus", kbps: Int? = 160) =
+    private fun snapshot(
+        mediaId: String?,
+        mime: String = "audio/opus",
+        kbps: Int? = 160,
+        alignmentOffsetMs: Long? = null,
+    ) =
         NerdStats.Snapshot(
             mimeType = mime,
             bitrateKbps = kbps,
             sampleRateHz = 48_000,
             channels = 2,
             mediaId = mediaId,
+            alignmentOffsetMs = alignmentOffsetMs,
         )
 
     // ── Publishing ───────────────────────────────────────────────────────────
@@ -176,19 +182,19 @@ class NerdStatsRegressionTest {
     }
 
     @Test
-    fun `alignment offset and residual are recorded, cleared on null, and forgotten with track`() {
+    fun `sync drift is recorded, cleared on a residual-free update, and forgotten with the track`() {
         NerdStats.forgetLastSession()
         assertNull(NerdStats.getAlignmentOffset("track_1"))
-        assertNull(NerdStats.getAlignmentResidual("track_1"))
+        assertNull(NerdStats.getSyncDrift("track_1"))
 
         NerdStats.recordAlignmentOffset("track_1", 145L, -8L)
         assertEquals(145L, NerdStats.getAlignmentOffset("track_1"))
-        assertEquals(-8L, NerdStats.getAlignmentResidual("track_1"))
+        assertEquals(-8L, NerdStats.getSyncDrift("track_1"))
 
-        // Updating without residual removes stale residual
+        // Updating without sync drift removes the stale figure
         NerdStats.recordAlignmentOffset("track_1", 20L, null)
         assertEquals(20L, NerdStats.getAlignmentOffset("track_1"))
-        assertNull(NerdStats.getAlignmentResidual("track_1"))
+        assertNull(NerdStats.getSyncDrift("track_1"))
 
         // clearDeclared(trackId) clears alignment telemetry
         NerdStats.clearDeclared("track_1")
@@ -198,6 +204,13 @@ class NerdStatsRegressionTest {
         NerdStats.recordAlignmentOffset("track_2", -35L, 4L)
         NerdStats.clearAlignmentOffset("track_2")
         assertNull(NerdStats.getAlignmentOffset("track_2"))
-        assertNull(NerdStats.getAlignmentResidual("track_2"))
+        assertNull(NerdStats.getSyncDrift("track_2"))
+    }
+
+    @Test
+    fun `zero or absent alignment offset is not reported as aligned`() {
+        assertNull(snapshot("track_1").shownAlignmentOffsetMs)
+        assertNull(snapshot("track_1", alignmentOffsetMs = 0L).shownAlignmentOffsetMs)
+        assertEquals(-120L, snapshot("track_1", alignmentOffsetMs = -120L).shownAlignmentOffsetMs)
     }
 }

@@ -5960,7 +5960,7 @@ class PlaybackService : MediaLibraryService() {
             },
             mediaId = mediaId,
             alignmentOffsetMs = NerdStats.getAlignmentOffset(mediaId),
-            alignmentResidualMs = NerdStats.getAlignmentResidual(mediaId),
+            syncDriftMs = NerdStats.getSyncDrift(mediaId),
         ), expectedGeneration = generation)
     }
 

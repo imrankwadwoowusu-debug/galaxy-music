@@ -479,6 +479,7 @@
     <string name="pipeline_pcm_data_rate" translatable="false">PCM Data Rate</string>
     <string name="pipeline_channels">Channels</string>
     <string name="pipeline_alignment" translatable="false">Waveform alignment</string>
+    <string name="pipeline_alignment_drift" translatable="false">%1$s (drift %2$s)</string>
     <string name="pipeline_decoder_name">Decoder Name</string>
     <string name="pipeline_io_rate">I/O Rate</string>
     <string name="pipeline_type">Type</string>

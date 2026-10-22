@@ -282,12 +282,20 @@ fun AudioPipelineDialog(
                 PipelineRow(stringResource(R.string.pipeline_bitrate), bitrate)
                 PipelineRow(stringResource(R.string.pipeline_pcm_data_rate), pcmDataRate)
                 PipelineRow(stringResource(R.string.pipeline_channels), channels)
-                nerdStats?.alignmentOffsetMs?.let { offset ->
-                    val residual = nerdStats?.alignmentResidualMs
+                nerdStats?.shownAlignmentOffsetMs?.let { offset ->
+                    val offsetText = "%+d ms".format(Locale.ROOT, offset)
+                    val drift = nerdStats?.syncDriftMs
                     PipelineRow(
                         stringResource(R.string.pipeline_alignment),
-                        if (residual != null) "%+d ms (residual %+d ms)".format(Locale.ROOT, offset, residual)
-                        else "%+d ms".format(Locale.ROOT, offset),
+                        if (drift != null) {
+                            stringResource(
+                                R.string.pipeline_alignment_drift,
+                                offsetText,
+                                "%+d ms".format(Locale.ROOT, drift),
+                            )
+                        } else {
+                            offsetText
+                        },
                     )
                 }
             }
