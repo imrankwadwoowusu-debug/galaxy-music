@@ -174,7 +174,6 @@ class NerdStatsRegressionTest {
             assertEquals("$rate Hz", rate > 48_000, s.isHiRes)
         }
     }
-    }
 
     @Test
     fun `alignment offset and residual are recorded, cleared on null, and forgotten with track`() {

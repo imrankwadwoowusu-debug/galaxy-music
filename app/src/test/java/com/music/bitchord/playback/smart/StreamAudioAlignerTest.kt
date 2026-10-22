@@ -1,7 +1,10 @@
 package com.music.bitchord.playback.smart
 
 import android.net.Uri
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -9,7 +12,6 @@ import org.junit.Test
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.sin
-import kotlin.random.Random
 
 class StreamAudioAlignerTest {
 
@@ -116,25 +118,23 @@ class StreamAudioAlignerTest {
     }
 
     @Test
-    fun `low confidence correlation falls back to 0ms`() {
-        val random = Random(12345)
-        // Uncorrelated white noise signals
-        val source = FloatArray(1000) { random.nextFloat() * 2f - 1f }
-        val target = FloatArray(1000) { random.nextFloat() * 2f - 1f }
+    fun `confidence is trusted only at or above the floor`() {
+        assertTrue(StreamAudioAligner.isConfident(StreamAudioAligner.MIN_CONFIDENCE))
+        assertFalse(StreamAudioAligner.isConfident(0.39))
+    }
 
+    @Test
+    fun `empty signals report no offset and no confidence`() {
         val (offset, confidence) = StreamAudioAligner.computeOffsetFromSignals(
-            sourceSamples = source,
+            sourceSamples = FloatArray(0),
             sourceSampleRate = 44100.0,
             sourceStartSec = 0.0,
-            targetSamples = target,
+            targetSamples = FloatArray(0),
             targetSampleRate = 44100.0,
             targetStartSec = 0.0,
         )
-
-        if (confidence < 0.40) {
-            val finalOffset = if (confidence >= 0.40) offset else 0L
-            assertEquals(0L, finalOffset)
-        }
+        assertEquals(0L, offset)
+        assertEquals(0.0, confidence, 0.0)
     }
 
     @Test
@@ -149,6 +149,33 @@ class StreamAudioAlignerTest {
 
         // Different URL for same mediaId is not cached
         assertNull(StreamAudioAligner.getCachedOffsetMs(mediaId, "https://other.com/stream.m4a"))
+    }
+
+    @Test
+    fun `cache entries are keyed by stream url, so a repeat upgrade reuses the measurement`() {
+        val mediaId = "track_xyz"
+        StreamAudioAligner.putCachedOffsetMs(mediaId, "https://cdn/stream.flac", 320L)
+
+        // A second upgrade of the same track resolves the same stream URL, whatever
+        // generation marker the cache URI carries.
+        assertEquals(320L, StreamAudioAligner.getCachedOffsetMs(mediaId, "https://cdn/stream.flac"))
+        assertNull(StreamAudioAligner.getCachedOffsetMs(mediaId, "bitchord://watch?v=abc&q=hifi-2"))
+    }
+
+    @Test
+    fun `a slow alignment does not hold the swap, and its job keeps running`() = runBlocking {
+        val never = CompletableDeferred<Long>()
+        val started = System.currentTimeMillis()
+        assertEquals(0L, awaitAlignmentOrZero(never, waitMs = 50L))
+        assertTrue("waited ${System.currentTimeMillis() - started}ms", System.currentTimeMillis() - started < 1000L)
+        assertTrue("the job must survive the wait so it can still cache", never.isActive)
+    }
+
+    @Test
+    fun `a finished alignment is returned as-is`() = runBlocking {
+        val done = CompletableDeferred(275L)
+        assertEquals(275L, awaitAlignmentOrZero(done, waitMs = 50L))
+        assertEquals(0L, awaitAlignmentOrZero(null, waitMs = 50L))
     }
 
     @Test

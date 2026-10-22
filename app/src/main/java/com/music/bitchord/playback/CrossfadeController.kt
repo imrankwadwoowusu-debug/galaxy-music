@@ -676,6 +676,14 @@ class CrossfadeController(
         listeningTo = target
     }
 
+    /**
+     * Rebinds the session listener to the active player after an external player
+     * swap (e.g. version swap or quality upgrade).
+     */
+    fun updateActivePlayer() {
+        listenTo(active())
+    }
+
     fun start() {
         listenTo(active())
         tickerJob?.cancel()

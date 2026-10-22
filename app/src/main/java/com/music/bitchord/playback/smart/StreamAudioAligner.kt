@@ -8,7 +8,11 @@ import androidx.media3.common.util.UnstableApi
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.playback.AudioCache
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
@@ -36,7 +40,7 @@ object StreamAudioAligner {
     const val SECONDARY_WINDOW_AFTER_SEC = 10.0
 
     // Cache computed offsets so repeat upgrades or seeks reuse the measurement instantly:
-    // (mediaId, streamKey) -> offsetMs
+    // (mediaId, streamUrl) -> offsetMs
     private val offsetCache = ConcurrentHashMap<Pair<String, String>, Long>()
 
     fun getCachedOffsetMs(mediaId: String, streamUrl: String): Long? =
@@ -49,6 +53,10 @@ object StreamAudioAligner {
     fun clearCache() {
         offsetCache.clear()
     }
+
+    /** Where the incoming deck must start so [offsetMs] of content compensation is applied. */
+    fun seekPositionMs(currentPositionMs: Long, offsetMs: Long): Long =
+        (currentPositionMs + offsetMs).coerceAtLeast(0L)
 
     /**
      * Resolves analysis window bounds based on opening availability and playback position.
@@ -131,9 +139,15 @@ object StreamAudioAligner {
         return Pair(totalOffsetMs, correlation.confidence)
     }
 
+    /** Whether the correlation was strong enough to trust, at the shared floor. */
+    internal fun isConfident(confidence: Double): Boolean = confidence >= MIN_CONFIDENCE
+
     /**
      * Calculates or retrieves the time offset (in milliseconds) from [currentSong]
      * to [targetStreamUri]. Clamped to fallback 0L if analysis fails or times out.
+     *
+     * @param streamUrl The real stream URL; the cache is keyed by it, not by the
+     * generation-marked cache URI in [targetStreamUri].
      */
     suspend fun findStreamOffsetMs(
         context: Context?,
@@ -141,9 +155,9 @@ object StreamAudioAligner {
         currentPosMs: Long,
         currentSong: Song?,
         targetStreamUri: Uri,
+        streamUrl: String,
     ): Long = withTimeoutOrNull(TIMEOUT_MS) {
-        val streamKey = targetStreamUri.toString()
-        val cached = offsetCache[mediaId to streamKey]
+        val cached = offsetCache[mediaId to streamUrl]
         if (cached != null) return@withTimeoutOrNull cached
 
         withContext(Dispatchers.IO) {
@@ -166,11 +180,13 @@ object StreamAudioAligner {
                     sourceDs,
                     PRIMARY_WINDOW_START_SEC,
                     PRIMARY_WINDOW_END_SEC,
+                    abort = { !isActive },
                 )
                 var targetDecode = AudioDecoder.decodeRegion(
                     targetDs,
                     PRIMARY_WINDOW_START_SEC,
                     PRIMARY_WINDOW_END_SEC,
+                    abort = { !isActive },
                 )
 
                 // Secondary: Fall back around current playback position if primary missing/evicted
@@ -178,13 +194,14 @@ object StreamAudioAligner {
                     sourceDecode.first.samples.isEmpty() || targetDecode.first.samples.isEmpty()
                 ) {
                     val (secStart, secEnd) = resolveWindow(hasOpening = false, currentPosMs = currentPosMs)
-                    sourceDecode = AudioDecoder.decodeRegion(sourceDs, secStart, secEnd)
-                    targetDecode = AudioDecoder.decodeRegion(targetDs, secStart, secEnd)
+                    sourceDecode = AudioDecoder.decodeRegion(sourceDs, secStart, secEnd, abort = { !isActive })
+                    targetDecode = AudioDecoder.decodeRegion(targetDs, secStart, secEnd, abort = { !isActive })
                 }
 
                 if (sourceDecode == null || targetDecode == null ||
                     sourceDecode.first.samples.isEmpty() || targetDecode.first.samples.isEmpty()
                 ) {
+                    ensureActive()
                     TrackLog.w(TAG, "PCM decoding failed for stream alignment on $mediaId: source=${sourceDecode?.first?.samples?.size} target=${targetDecode?.first?.samples?.size} (null = decoder/extractor failed, 0 = nothing cached in window)")
                     return@withContext 0L
                 }
@@ -200,14 +217,16 @@ object StreamAudioAligner {
                     startTgt,
                 )
 
-                if (confidence >= MIN_CONFIDENCE) {
-                    offsetCache[mediaId to streamKey] = offsetMs
+                if (isConfident(confidence)) {
+                    offsetCache[mediaId to streamUrl] = offsetMs
                     TrackLog.d(TAG, "Stream alignment for $mediaId: offset=${offsetMs}ms, confidence=$confidence")
                     return@withContext offsetMs
                 }
 
                 TrackLog.w(TAG, "Stream alignment confidence $confidence < $MIN_CONFIDENCE for $mediaId; fallback 0ms")
                 0L
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Stream audio alignment failed for $mediaId", e)
                 0L
@@ -244,3 +263,14 @@ object StreamAudioAligner {
         return AudioCache.renditionDataSource(watch, pick)
     }
 }
+
+/**
+ * The alignment already computed, or 0L once [waitMs] passes.
+ *
+ * The measurement runs alongside the audition, so it is normally finished by
+ * the time the swap is ready. When it is not, landing unaligned beats stalling
+ * the player for the rest of the deadline; [job] keeps running either way and
+ * caches its answer for the next upgrade.
+ */
+internal suspend fun awaitAlignmentOrZero(job: Deferred<Long>?, waitMs: Long): Long =
+    if (job == null) 0L else withTimeoutOrNull(waitMs) { job.await() } ?: 0L

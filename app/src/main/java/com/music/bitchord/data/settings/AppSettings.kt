@@ -402,6 +402,10 @@ object AppSettings {
     /** Analyzes audio waveforms when upgrading stream quality to eliminate beat skips. */
     val smartSourceAlignment = MutableStateFlow(false)
 
+    /** [smartVersionAlignment] is the parent: source alignment may not run without it. */
+    val sourceAlignmentEnabled: Boolean
+        get() = smartVersionAlignment.value && smartSourceAlignment.value
+
     /** Drops haze blur (status bar, mini player, bottom fade, lyrics focus) for a solid-fill look. */
     val reduceDynamicBlur = MutableStateFlow(false)
 
