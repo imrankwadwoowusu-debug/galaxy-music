@@ -641,6 +641,19 @@ object AudioCache {
     private val playedIds = ConcurrentHashMap.newKeySet<String>()
 
     /**
+     * Total size in bytes of each item an open has revealed one for, keyed by
+     * the URI the player was given. [playbackFactory] answers an open the cache
+     * cannot size from here — see the comment there.
+     */
+    private val knownTotals = ConcurrentHashMap<String, Long>()
+
+    /** Bounded so a long session cannot grow [knownTotals] without limit. */
+    private fun rememberTotal(key: String, total: Long) {
+        if (knownTotals.size >= MAX_KNOWN_TOTALS) knownTotals.clear()
+        knownTotals[key] = total
+    }
+
+    /**
      * Remembers [songs]' metadata for the cache entries they are about to
      * fill, and backfills it into any entry already tagged without it.
      */
@@ -1086,6 +1099,8 @@ object AudioCache {
     /** Set once the player has played the track from this entry. */
     private const val META_PLAYED = "bc_played"
     private const val MAX_NOTED_SONGS = 256
+
+    private const val MAX_KNOWN_TOTALS = 64
     private const val COPY_BUFFER_BYTES = 64 * 1024
 
     private const val CACHE_DIR_NAME = "audio_cache"
@@ -1126,7 +1141,20 @@ object AudioCache {
                 } else {
                     cacheDs
                 }
-                return activeDs.open(dataSpec)
+                val length = activeDs.open(dataSpec)
+                val key = dataSpec.uri.toString()
+                if (length != C.LENGTH_UNSET.toLong()) {
+                    rememberTotal(key, dataSpec.position + length)
+                    return length
+                }
+                // While only a prefix of an item is on disk the cache answers
+                // "unknown size", and a progressive source given no length
+                // builds no seek map — which is what leaves a standby deck
+                // unseekable and drops the upgrade. Some other open of the
+                // same item has already told us the total; answer with it.
+                return knownTotals[key]
+                    ?.let { (it - dataSpec.position).coerceAtLeast(0L) }
+                    ?: length
             }
 
             override fun read(buffer: ByteArray, offset: Int, length: Int): Int =

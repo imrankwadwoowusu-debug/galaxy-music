@@ -4674,6 +4674,11 @@ class PlaybackService : MediaLibraryService() {
             // audio alone rather than adopt a deck seconds behind.
             if (!standbyPlayer.isCurrentMediaItemSeekable) {
                 TrackLog.w("BitChord", "standby deck came up unseekable; preparing it once more", about = mediaId)
+                // The open that made it unseekable is the one that happened
+                // before any open had revealed the item's size. The read-ahead
+                // is fetching it right now, so give that a moment to land
+                // before opening it again.
+                delay(400)
                 configureStandby(
                     standbyPlayer,
                     activePlayer,
@@ -4746,6 +4751,7 @@ class PlaybackService : MediaLibraryService() {
             // that. It is muted throughout, so none of this is audible.
             val lead = StandbySyncLead()
             var syncResidual: Long? = null
+            var lastSeekTarget: Long? = null
             if (willPlay && alignmentEnabled) {
                 val syncDeadline = SystemClock.elapsedRealtime() + 8_000L
                 for (attempt in 0..SYNC_MAX_SEEKS) {
@@ -4778,14 +4784,16 @@ class PlaybackService : MediaLibraryService() {
                         QualityUpgrade.shelve(mediaId, stream)
                         return false
                     }
-                    TrackLog.d("BitChord", "upgrade standby sync #$attempt: standby behind by ${drift}ms (lead=${lead.leadMs}ms)", about = mediaId)
+                    TrackLog.d("BitChord", "upgrade standby sync #$attempt: standby behind by ${drift}ms (lead=${lead.leadMs}ms asked=${lastSeekTarget}ms reported=${standbyPlayer.currentPosition}ms)", about = mediaId)
                     if (abs(drift) <= SYNC_TOLERANCE_MS || attempt == SYNC_MAX_SEEKS ||
                         SystemClock.elapsedRealtime() > syncDeadline
                     ) {
                         break
                     }
                     val currentLead = lead.observe(drift)
-                    standbyPlayer.seekTo(currentIndex, (standbyPlayer.currentPosition + drift + currentLead).coerceAtLeast(0L))
+                    val target = (standbyPlayer.currentPosition + drift + currentLead).coerceAtLeast(0L)
+                    standbyPlayer.seekTo(currentIndex, target)
+                    lastSeekTarget = target
                 }
             }
 
