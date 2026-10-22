@@ -9,6 +9,7 @@ import android.os.SystemClock
 import com.music.bitchord.R
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.playback.smart.AutomixAnalysisSource
+import com.music.bitchord.playback.smart.StreamAudioSource
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
@@ -1967,6 +1968,26 @@ object AudioCache {
                 .createDataSource(),
             uri,
         )
+
+    /**
+     * A random-access reader over [uri]'s cached bytes, for waveform alignment.
+     * Returns null if no cached bytes are available.
+     */
+    fun streamMediaDataSource(uri: Uri): MediaDataSource? {
+        if (!::cache.isInitialized) return null
+        val key = keyFactory.buildCacheKey(DataSpec(uri))
+        val spans = cache.getCachedSpans(key).filter { it.isCached }
+        if (spans.isEmpty()) return null
+        return StreamAudioSource(
+            CacheDataSource.Factory()
+                .setCache(cache)
+                .setUpstreamDataSourceFactory(NoUpstream)
+                .setCacheKeyFactory(keyFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                .createDataSource(),
+            uri,
+        )
+    }
 
     /**
      * A random-access reader over [uri]'s cached bytes, for the analyzer to hand
