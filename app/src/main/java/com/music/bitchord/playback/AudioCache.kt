@@ -654,6 +654,15 @@ object AudioCache {
     }
 
     /**
+     * Records a size learned outside the cache — one ranged request against the
+     * stream, made when the cache could not answer for an item it holds only
+     * part of. See [playbackFactory] for what needs it and why.
+     */
+    fun rememberStreamTotal(uri: Uri, total: Long) {
+        rememberTotal(uri.toString(), total)
+    }
+
+    /**
      * Remembers [songs]' metadata for the cache entries they are about to
      * fill, and backfills it into any entry already tagged without it.
      */

@@ -4589,6 +4589,30 @@ class PlaybackService : MediaLibraryService() {
      * playback URI differs, so an item rebuilt identically would be accepted
      * and quietly keep playing the old stream.
      */
+    /**
+     * How many bytes [stream] holds, straight from the server, or null when it
+     * will not say.
+     *
+     * One ranged request for a single byte: a `206` answers with
+     * `Content-Range: bytes 0-0/<total>`, which is the total. Only asked when
+     * the cache cannot size an item it is holding part of — without a length a
+     * progressive FLAC builds no seek map, so its deck cannot be positioned at
+     * all and the upgrade is abandoned.
+     */
+    private suspend fun learnStreamLength(stream: SourceStream): Long? = withContext(Dispatchers.IO) {
+        runCatching {
+            val request = okhttp3.Request.Builder()
+                .url(stream.url)
+                .header("Range", "bytes=0-0")
+                .apply { stream.headers.forEach { (name, value) -> header(name, value) } }
+                .build()
+            Http.client.newCall(request).execute().use { response ->
+                response.header("Content-Range")?.substringAfterLast('/')?.toLongOrNull()
+                    ?: response.header("Content-Length")?.toLongOrNull()
+            }?.takeIf { it > 0L }
+        }.getOrNull()
+    }
+
     private suspend fun swapToAlignedStream(
         now: SwapPoint,
         upgradedItem: MediaItem,
@@ -4675,10 +4699,19 @@ class PlaybackService : MediaLibraryService() {
             if (!standbyPlayer.isCurrentMediaItemSeekable) {
                 TrackLog.w("BitChord", "standby deck came up unseekable; preparing it once more", about = mediaId)
                 // The open that made it unseekable is the one that happened
-                // before any open had revealed the item's size. The read-ahead
-                // is fetching it right now, so give that a moment to land
-                // before opening it again.
-                delay(400)
+                // before any open had revealed the item's size. Ask the server
+                // for that size — one ranged request for a byte — and remember
+                // it, so the second open builds the seek map the first could
+                // not. When the server will not say, give the read-ahead a
+                // moment to reveal it instead.
+                val marked = standbyPlayer.currentMediaItem?.localConfiguration?.uri
+                val learned = marked?.let { uri ->
+                    learnStreamLength(stream)?.also { total ->
+                        AudioCache.rememberStreamTotal(uri, total)
+                        TrackLog.d("BitChord", "learned $total bytes for $mediaId from the server", about = mediaId)
+                    }
+                }
+                if (learned == null) delay(400)
                 configureStandby(
                     standbyPlayer,
                     activePlayer,
