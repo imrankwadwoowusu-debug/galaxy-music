@@ -247,6 +247,7 @@ fun SettingsScreen(
     val dontRepeatSuggestions by AppSettings.dontRepeatSuggestions.collectAsStateWithLifecycle()
     val preferMusicOnly by AppSettings.preferMusicOnly.collectAsStateWithLifecycle()
     val smartVersionAlignment by AppSettings.smartVersionAlignment.collectAsStateWithLifecycle()
+    val smartSourceAlignment by AppSettings.smartSourceAlignment.collectAsStateWithLifecycle()
     val filterNonMusicAudio by AppSettings.filterNonMusicAudio.collectAsStateWithLifecycle()
     val localMusicFolderUri by AppSettings.localMusicFolderUri.collectAsStateWithLifecycle()
     val highPerformanceMode by AppSettings.highPerformanceMode.collectAsStateWithLifecycle()
@@ -1466,6 +1467,31 @@ fun SettingsScreen(
                         )
                     },
                     onClick = { AppSettings.setSmartVersionAlignment(!smartVersionAlignment) },
+                )
+            }
+            val smartSourceAlignmentTitle = stringResource(R.string.smart_source_alignment)
+            row(smartSourceAlignmentTitle, "source", "upgrade", "waveform", "quality", "alignment", "flac") {
+                SettingsRow(
+                    icon = Icons.Rounded.GraphicEq,
+                    title = smartSourceAlignmentTitle,
+                    subtitle = stringResource(R.string.smart_source_alignment_subtitle),
+                    enabled = smartVersionAlignment,
+                    trailing = {
+                        Switch(
+                            // Reads the collected states, not
+                            // [AppSettings.sourceAlignmentEnabled]: that is a
+                            // plain StateFlow read, which Compose does not
+                            // track, so the switch would not redraw on a tap.
+                            checked = smartVersionAlignment && smartSourceAlignment,
+                            onCheckedChange = AppSettings::setSmartSourceAlignment,
+                            enabled = smartVersionAlignment,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { AppSettings.setSmartSourceAlignment(!smartSourceAlignment) },
                 )
             }
             val showNerdStatsTitle = stringResource(R.string.show_nerd_stats)
