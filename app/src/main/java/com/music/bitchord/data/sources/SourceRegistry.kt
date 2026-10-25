@@ -521,6 +521,15 @@ object SourceRegistry {
             checkValidLossless = false,
         ),
         SourceConfig(
+            id = "com.8spine.tidal-deezer",
+            kind = SourceKind.ADDON,
+            label = "BluBit Station Hi-Fi",
+            baseUrl = "https://bluebit.jucepe0929.workers.dev/manifest.json",
+            enabled = true,
+            allowDownloads = true,
+            checkValidLossless = false,
+        ),
+        SourceConfig(
             id = "dev.akira.bitchord-hires",
             kind = SourceKind.ADDON,
             label = "BitChord Hi-Res (Lossless / Atmos)",
