@@ -257,7 +257,7 @@ object SourceResolver {
         // Video rows always use YouTube's own stream unless the listener
         // explicitly converts the current item in the player. A module match
         // is another recording and can be a wrong song altogether.
-        if (target.title.isBlank() || target.isVideo) return null
+        if (target.title.isBlank()) return null
         val active = SourceRegistry.activeForPlayback()
         val youtube = active.firstOrNull { it.kind == SourceKind.YOUTUBE } ?: return null
         val request = requestForNow()
@@ -285,7 +285,7 @@ object SourceResolver {
      * YouTube video id, so it first finds the matching YouTube Music row.
      */
     suspend fun youtubeFallback(target: TrackMatcher.Target): SourceStream? {
-        if (target.title.isBlank() || target.isVideo) return null
+        if (target.title.isBlank()) return null
         val youtube = SourceRegistry.activeForPlayback()
             .firstOrNull { it.kind == SourceKind.YOUTUBE }
             ?: return null

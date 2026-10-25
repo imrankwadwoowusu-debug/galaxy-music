@@ -1490,10 +1490,11 @@ fun TvLosslessAddonsDialog(onDismiss: () -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 TvDialogButton(
-                    text = if (isCheckingHealth) "Testing..." else "Test Addons",
+                    text = if (isCheckingHealth) "Testing..." else "Test / Refresh",
                     onClick = {
                         if (!isCheckingHealth) {
                             isCheckingHealth = true
+                            SourceRegistry.clearCompletedAddonTrackCalls()
                             scope.launch {
                                 val res = SourceRegistry.checkAddonsHealth()
                                 healthMap = res
