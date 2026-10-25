@@ -60,9 +60,12 @@ data class SourceConfig(
      */
     val checkValidLossless: Boolean = false,
 ) {
-    /** Whether this source is shut out right now because it needs an output that isn't connected. */
+    /**
+     * Whether this source is shut out right now because it needs an output that isn't connected.
+     * Always false so lossless streaming is never gated on hardware DAC detection.
+     */
     val awaitsLosslessOutput: Boolean
-        get() = checkValidLossless && !LosslessOutput.capable
+        get() = false
 
     /** The two manifest switches, without the parts of the config the user set. */
     internal fun withPolicyOf(other: SourceConfig) =
@@ -165,8 +168,10 @@ object SourceRegistry {
             }
         }
         val withPrebaked = PREBAKED_SOURCES.filter { pre -> updatedStored.none { it.id == pre.id || it.baseUrl == pre.baseUrl } } + updatedStored
-        val seeded = withPrebaked + BUILT_IN_KINDS
-            .filter { kind -> withPrebaked.none { it.kind == kind } }
+        val prebakedOrder = PREBAKED_SOURCES.map { it.id }.withIndex().associate { it.value to it.index }
+        val prioritized = withPrebaked.sortedBy { prebakedOrder[it.id] ?: (100 + it.kind.ordinal) }
+        val seeded = prioritized + BUILT_IN_KINDS
+            .filter { kind -> prioritized.none { it.kind == kind } }
             .map { SourceConfig(kind = it) }
 
         // The retired built-in module is removed, while a custom module entered
@@ -177,6 +182,7 @@ object SourceRegistry {
                 when {
                     config.kind == SourceKind.YOUTUBE && !config.enabled -> config.copy(enabled = true)
                     config.kind == SourceKind.JIOSAAVN && forceJioSaavnOff -> config.copy(enabled = false)
+                    config.id == "app.bitchord.lastbabe" || config.id == "eljohnzc.addon.mono" -> config.copy(enabled = true)
                     else -> config
                 }
             }
@@ -528,19 +534,19 @@ object SourceRegistry {
 
     val PREBAKED_SOURCES = listOf(
         SourceConfig(
-            id = "gg.gglos.addon",
+            id = "app.bitchord.lastbabe",
             kind = SourceKind.ADDON,
-            label = "GGLOS (Lossless & Atmos)",
-            baseUrl = "https://gglos.geisselgottes.cfd/manifest.json",
+            label = "Last Babe 💕 (Lossless FLAC)",
+            baseUrl = "https://lastbabe.velixir.run/e/1793086716/56ab9b9f20a6a8f7cd1cddd6cad00572/manifest.json",
             enabled = true,
             allowDownloads = true,
             checkValidLossless = false,
         ),
         SourceConfig(
-            id = "com.8spine.tidal-deezer",
+            id = "eljohnzc.addon.mono",
             kind = SourceKind.ADDON,
-            label = "BluBit Station Hi-Fi",
-            baseUrl = "https://bluebit.jucepe0929.workers.dev/manifest.json",
+            label = "Eljohnzc Monochrome (24-bit Lossless)",
+            baseUrl = "https://eljohnzc-mono.de.deplexo.com/manifest.json",
             enabled = true,
             allowDownloads = true,
             checkValidLossless = false,
@@ -552,7 +558,7 @@ object SourceRegistry {
             baseUrl = "https://bitchord-hires-addon.vercel.app/manifest.json",
             enabled = true,
             allowDownloads = true,
-            checkValidLossless = true,
+            checkValidLossless = false,
         ),
         SourceConfig(
             id = "eljohnzc.addon.music",
@@ -564,11 +570,20 @@ object SourceRegistry {
             checkValidLossless = false,
         ),
         SourceConfig(
-            id = "eljohnzc.addon.mono",
+            id = "com.8spine.tidal-deezer",
             kind = SourceKind.ADDON,
-            label = "Eljohnzc Monochrome",
-            baseUrl = "https://eljohnzc-mono.de.deplexo.com/manifest.json",
-            enabled = true,
+            label = "BluBit Station Hi-Fi",
+            baseUrl = "https://bluebit.jucepe0929.workers.dev/manifest.json",
+            enabled = false,
+            allowDownloads = true,
+            checkValidLossless = false,
+        ),
+        SourceConfig(
+            id = "gg.gglos.addon",
+            kind = SourceKind.ADDON,
+            label = "GGLOS (Lossless & Atmos)",
+            baseUrl = "https://gglos.geisselgottes.cfd/manifest.json",
+            enabled = false,
             allowDownloads = true,
             checkValidLossless = false,
         ),
@@ -577,16 +592,7 @@ object SourceRegistry {
             kind = SourceKind.ADDON,
             label = "Lossless Bridge",
             baseUrl = "https://losslessbridge.de.deplexo.com/manifest.json",
-            enabled = true,
-            allowDownloads = true,
-            checkValidLossless = false,
-        ),
-        SourceConfig(
-            id = "app.bitchord.lastbabe",
-            kind = SourceKind.ADDON,
-            label = "Last Babe (Lossless FLAC)",
-            baseUrl = "https://lastbabe.velixir.run/e/1793086716/56ab9b9f20a6a8f7cd1cddd6cad00572/manifest.json",
-            enabled = true,
+            enabled = false,
             allowDownloads = true,
             checkValidLossless = false,
         ),
@@ -595,7 +601,7 @@ object SourceRegistry {
             kind = SourceKind.ADDON,
             label = "Qobuz",
             baseUrl = "https://qobuz-addon.vercel.app/manifest.json",
-            enabled = true,
+            enabled = false,
             allowDownloads = true,
             checkValidLossless = false,
         ),
@@ -604,7 +610,7 @@ object SourceRegistry {
             kind = SourceKind.ADDON,
             label = "Deezer ARL",
             baseUrl = "https://deezer.nom.deno.net/u/2cdc77d5a051ca15",
-            enabled = true,
+            enabled = false,
             allowDownloads = true,
             checkValidLossless = false,
         ),
@@ -613,7 +619,7 @@ object SourceRegistry {
             kind = SourceKind.ADDON,
             label = "Deezer",
             baseUrl = "https://deezer.nom.deno.net/manifest.json",
-            enabled = true,
+            enabled = false,
             allowDownloads = true,
             checkValidLossless = false,
         ),

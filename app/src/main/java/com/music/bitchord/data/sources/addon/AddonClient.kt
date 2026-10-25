@@ -228,7 +228,7 @@ class AddonClient(rawBaseUrl: String) {
                     ?: ATMOS_NEVER
             }
         } else {
-            params[ATMOS_KEY] = hint
+            params.putIfAbsent(ATMOS_KEY, hint)
         }
         return params
     }

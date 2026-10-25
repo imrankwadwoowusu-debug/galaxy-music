@@ -747,7 +747,7 @@ object SourceResolver {
      */
     fun sameRecordingAs(candidateSec: Int?, playingSec: Int?, isVideoOrigin: Boolean = false): Boolean {
         if (candidateSec == null || playingSec == null) return false
-        val limit = if (isVideoOrigin) TrackMatcher.VIDEO_DURATION_LIMIT_SEC else UPGRADE_DRIFT_SEC
+        val limit = TrackMatcher.VIDEO_DURATION_LIMIT_SEC
         return kotlin.math.abs(candidateSec - playingSec) <= limit
     }
 
@@ -965,8 +965,7 @@ object SourceResolver {
             // same constant here prevents the upgrade path from discarding a
             // valid Qobuz FLAC (225 s) when the video container says 283 s.
             if (strictLength) {
-                val driftSec = if (target.isVideo) TrackMatcher.VIDEO_DURATION_LIMIT_SEC
-                               else UPGRADE_DRIFT_SEC
+                val driftSec = TrackMatcher.VIDEO_DURATION_LIMIT_SEC
                 matches = matches.filter { TrackMatcher.withinSeconds(it, target, driftSec) }
             }
             if (matches.isEmpty()) continue
@@ -1195,7 +1194,7 @@ object SourceResolver {
      * audio a listener is in the middle of. Two seconds allows for a service
      * rounding a runtime differently and nothing else.
      */
-    private const val UPGRADE_DRIFT_SEC = 2
+    private const val UPGRADE_DRIFT_SEC = TrackMatcher.VIDEO_DURATION_LIMIT_SEC
 
     /**
      * How close two runtimes have to be to be the same cut of a song.

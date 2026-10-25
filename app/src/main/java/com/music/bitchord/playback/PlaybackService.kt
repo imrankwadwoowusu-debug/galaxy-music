@@ -4990,8 +4990,7 @@ class PlaybackService : MediaLibraryService() {
         if (audition.playbackState != Player.STATE_READY) return Audition.Waiting
         val length = audition.duration
         if (length <= 0) return Audition.Waiting
-        val maxSlackMs = if (isVideoOrigin) TrackMatcher.VIDEO_DURATION_LIMIT_SEC * 1_000L
-                         else upgradeLengthSlackMs
+        val maxSlackMs = maxOf(TrackMatcher.VIDEO_DURATION_LIMIT_SEC * 1_000L, upgradeLengthSlackMs)
         if (previousDuration > 0 && abs(length - previousDuration) > maxSlackMs) {
             return Audition.Rejected("replacement is ${length}ms against ${previousDuration}ms")
         }
@@ -5094,7 +5093,7 @@ class PlaybackService : MediaLibraryService() {
         isVideoOrigin: Boolean = false,
     ) {
         if (previousDuration <= 0) return
-        val maxSlackMs = if (isVideoOrigin) TrackMatcher.VIDEO_DURATION_LIMIT_SEC * 1_000L else upgradeLengthSlackMs
+        val maxSlackMs = maxOf(TrackMatcher.VIDEO_DURATION_LIMIT_SEC * 1_000L, upgradeLengthSlackMs)
         scope.launch(TrackLog.about(mediaId)) {
             val agreed = withTimeoutOrNull(UPGRADE_PROVE_MS) {
                 while (true) {
