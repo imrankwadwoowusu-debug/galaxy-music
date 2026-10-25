@@ -257,6 +257,37 @@
         </activity>
 
         <!--
+          Other platforms' links: Spotify, Apple Music, Deezer and SoundCloud.
+          Kept on an alias rather than on MainActivity so Settings can switch
+          the whole set off (see ExternalLinks.setEnabled) — a disabled alias
+          drops these hosts from what the system routes to BitChord.
+
+          Not autoVerify, for the same reason as the YouTube Music filters above:
+          BitChord does not own these domains. Each host is one line the user
+          ticks under "Supported web addresses", so only hosts that really carry
+          a track, album or playlist link are listed here.
+        -->
+        <activity-alias
+            android:name=".ExternalLinksAlias"
+            android:enabled="true"
+            android:exported="true"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="open.spotify.com" />
+                <data android:host="music.apple.com" />
+                <data android:host="deezer.com" />
+                <data android:host="www.deezer.com" />
+                <data android:host="soundcloud.com" />
+                <data android:host="m.soundcloud.com" />
+            </intent-filter>
+        </activity-alias>
+
+        <!--
           The launcher entries live on aliases, not on MainActivity, so the user can
           swap the home-screen icon by enabling one alias and disabling the others
           (see AppIcon). Exactly one is enabled at a time; Default is the shipped one.

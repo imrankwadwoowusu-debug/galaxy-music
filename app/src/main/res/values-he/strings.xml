@@ -207,6 +207,8 @@
     <string name="equalizer_subtitle">פאנל המערכת של המכשיר שלך</string>
     <string name="show_nerd_stats">הצגת נתונים לחנונים</string>
     <string name="show_nerd_stats_subtitle">קודק, קצב סיביות ותדר דגימה בנגן</string>
+    <string name="external_links">פתיחת קישורים מאפליקציות אחרות</string>
+    <string name="external_links_subtitle">קישורים של Spotify, Apple Music, Deezer ו-SoundCloud מתנגנים כאן, לפי התאמה ב-YouTube Music</string>
     <string name="theme">ערכת נושא</string>
     <string name="reduce_animation">הפחתת אנימציה</string>
     <string name="reduce_animation_subtitle">מקפיא את הגרדיאנט של הנגן הראשי במקום לתת לו לנוע</string>

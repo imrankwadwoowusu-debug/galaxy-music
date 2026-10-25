@@ -208,6 +208,8 @@
     <string name="equalizer_subtitle">O painel do sistema do seu dispositivo</string>
     <string name="show_nerd_stats">Mostrar estatísticas técnicas</string>
     <string name="show_nerd_stats_subtitle">Codec, taxa de bits e taxa de amostragem no player</string>
+    <string name="external_links">Abrir links de outros apps</string>
+    <string name="external_links_subtitle">Links do Spotify, Apple Music, Deezer e SoundCloud tocam aqui, encontrados no YouTube Music</string>
     <string name="theme">Tema</string>
     <string name="reduce_animation">Reduzir animação</string>
     <string name="reduce_animation_subtitle">Congela o gradiente do player principal em vez de mover</string>

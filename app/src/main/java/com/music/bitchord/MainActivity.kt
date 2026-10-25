@@ -181,6 +181,7 @@ import com.music.bitchord.ui.screens.SpotifyCanvasAuthScreen
 import com.music.bitchord.ui.screens.SpotifyLibraryScreen
 import com.music.bitchord.data.spotify.SPOTIFY_PAGE_PREFIX
 import com.music.bitchord.playback.AudioCache
+import com.music.bitchord.playback.ExternalLinks
 import com.music.bitchord.playback.LinkRequest
 import com.music.bitchord.playback.MusicLink
 import com.music.bitchord.playback.OriginalVersion
@@ -1859,6 +1860,31 @@ private fun BitChordApp(
      * without spending the request is what lets the second run serve it.
      */
     val linkRequest by MusicLink.pending.collectAsStateWithLifecycle()
+
+    /**
+     * Plays a "play X" or a shared search, or shows its results — see
+     * [LinkRequest.Search]. Shared by the request itself and by a link from
+     * another platform, once that link has been turned into a search.
+     */
+    suspend fun serveSearch(request: LinkRequest.Search) {
+        val songs = if (!request.play) null else {
+            YtMusicRepository.search(request.query, SearchFilter.SONGS).getOrNull()
+                ?.filterIsInstance<SearchResult.Track>()
+        }
+        val top = songs?.firstOrNull()?.song
+        if (top != null) {
+            playRadio(top, QueueSource(searchLabel, PlaybackSourceType.SEARCH))
+        } else {
+            // Either the link was a search to look at, or "play X"
+            // found nothing to start — and the results are a better
+            // answer to a spoken request than silence is.
+            dismissPlayer()
+            navigator.clear()
+            selectedTab = TAB_SEARCH
+            viewModel.searchFor(request.query)
+        }
+    }
+
     LaunchedEffect(linkRequest, controller) {
         val request = linkRequest ?: return@LaunchedEffect
         // Nothing here can be served without somewhere to play it — even the
@@ -1890,22 +1916,20 @@ private fun BitChordApp(
                 // browse id and nothing else. See MainViewModel.openDetail.
                 viewModel.openDetail(request.browseId, title = "")
             }
-            is LinkRequest.Search -> {
-                val songs = if (!request.play) null else {
-                    YtMusicRepository.search(request.query, SearchFilter.SONGS).getOrNull()
-                        ?.filterIsInstance<SearchResult.Track>()
-                }
-                val top = songs?.firstOrNull()?.song
-                if (top != null) {
-                    playRadio(top, QueueSource(searchLabel, PlaybackSourceType.SEARCH))
+            is LinkRequest.Search -> serveSearch(request)
+            // Another platform's link: read what it names, then serve that as
+            // a search. The network read can fail, in which case the request is
+            // spent with a message rather than left to be served again.
+            is LinkRequest.Foreign -> {
+                val search = ExternalLinks.resolve(request.link)
+                if (search == null) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.couldnt_open_link),
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 } else {
-                    // Either the link was a search to look at, or "play X"
-                    // found nothing to start — and the results are a better
-                    // answer to a spoken request than silence is.
-                    dismissPlayer()
-                    navigator.clear()
-                    selectedTab = TAB_SEARCH
-                    viewModel.searchFor(request.query)
+                    serveSearch(search)
                 }
             }
             // "Play music", nothing named. The playback service restores its

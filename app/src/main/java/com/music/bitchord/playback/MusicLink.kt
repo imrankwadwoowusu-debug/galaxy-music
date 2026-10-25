@@ -4,6 +4,7 @@ import android.app.SearchManager
 import android.content.Intent
 import android.net.Uri
 import android.provider.MediaStore
+import com.music.bitchord.data.settings.AppSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,6 +36,13 @@ sealed interface LinkRequest {
      * handed over. See [com.music.bitchord.data.LocalMediaRepository.songFromUri].
      */
     data class LocalFile(val uri: Uri) : LinkRequest
+
+    /**
+     * A Spotify, Apple Music, Deezer or SoundCloud link. Not playable as it
+     * stands: the composition reads what it names and searches for that — see
+     * [ExternalLinks.resolve].
+     */
+    data class Foreign(val link: ExternalLinks.Link) : LinkRequest
 }
 
 /**
@@ -123,7 +131,10 @@ object MusicLink {
             return segments.firstOrNull()?.let(::track)
         }
         if (host != "youtube.com" && host != "music.youtube.com" && host != "m.youtube.com") {
-            return null
+            // Another platform's link, when the Settings switch allows them.
+            // Off, it is none of this app's business and the caller moves on.
+            if (!AppSettings.externalLinks.value) return null
+            return ExternalLinks.parse(uri)?.let(LinkRequest::Foreign)
         }
         val list = uri.getQueryParameter("list")?.trim().orEmpty()
         return when (segments.firstOrNull()) {

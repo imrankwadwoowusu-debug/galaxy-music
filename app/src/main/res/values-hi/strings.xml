@@ -206,6 +206,8 @@
     <string name="equalizer_subtitle">आपके डिवाइस का सिस्टम पैनल</string>
     <string name="show_nerd_stats">टेक्निकल आंकड़े दिखाएं</string>
     <string name="show_nerd_stats_subtitle">प्लेयर पर कोडेक, बिटरेट और सैंपल रेट</string>
+    <string name="external_links">दूसरे ऐप्स के लिंक खोलें</string>
+    <string name="external_links_subtitle">Spotify, Apple Music, Deezer और SoundCloud के लिंक यहीं चलते हैं, YouTube Music पर खोजकर</string>
     <string name="theme">थीम</string>
     <string name="reduce_animation">एनिमेशन कम करें</string>
     <string name="reduce_animation_subtitle">मुख्य प्लेयर के ग्रेडिएंट को बहने के बजाय स्थिर रखता है</string>

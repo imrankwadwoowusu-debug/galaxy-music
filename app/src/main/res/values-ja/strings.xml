@@ -201,6 +201,8 @@
     <string name="equalizer_subtitle">デバイスのシステムパネル</string>
     <string name="show_nerd_stats">技術情報を表示</string>
     <string name="show_nerd_stats_subtitle">プレイヤーにコーデック、ビットレート、サンプルレートを表示</string>
+    <string name="external_links">他のアプリのリンクを開く</string>
+    <string name="external_links_subtitle">Spotify、Apple Music、Deezer、SoundCloud のリンクを YouTube Music で照合してここで再生します</string>
     <string name="theme">テーマ</string>
     <string name="reduce_animation">アニメーションを減らす</string>
     <string name="reduce_animation_subtitle">メインプレイヤーのグラデーションを動かさず固定します</string>
