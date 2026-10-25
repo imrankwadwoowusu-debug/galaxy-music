@@ -120,6 +120,12 @@ object BitChordConnectManager {
         val spk = speaker ?: return
         val player = localPlayerProvider?.invoke()
 
+        val oldDevice = _activeDevice.value
+        if (oldDevice != null && oldDevice.id != device.id) {
+            cli.sendCommand(ConnectCommand(action = ConnectCommand.ACTION_PAUSE))
+            cli.disconnect()
+        }
+
         _isConnecting.value = true
         _activeDevice.value = device
 
@@ -154,6 +160,10 @@ object BitChordConnectManager {
         val player = localPlayerProvider?.invoke()
         val currentRemotePos = speaker?.positionMs ?: 0L
         val wasRemotePlaying = speaker?.isPlaying == true
+
+        if (resumeHere && wasRemotePlaying) {
+            client?.sendCommand(ConnectCommand(action = ConnectCommand.ACTION_PAUSE))
+        }
 
         speaker?.setActive(false)
         client?.disconnect()
