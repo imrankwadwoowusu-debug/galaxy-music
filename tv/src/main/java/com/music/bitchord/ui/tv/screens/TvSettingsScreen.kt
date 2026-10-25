@@ -77,6 +77,7 @@ fun TvSettingsScreen(
     val crossfade by AppSettings.crossfadeSeconds.collectAsState()
     val autoplay by AppSettings.autoplay.collectAsState()
     val skipSilence by AppSettings.skipSilence.collectAsState()
+    val dolbyAtmos by AppSettings.dolbyAtmos.collectAsState()
     val eqEnabled by AppSettings.equalizerEnabled.collectAsState()
     val spatial by TvSettings.spatialAudioEnabled.collectAsState()
     val loudness by AppSettings.loudnessNormalization.collectAsState()
@@ -189,6 +190,14 @@ fun TvSettingsScreen(
             }
 
             item { TvListHeader("Sound") }
+            item {
+                TvListRow(
+                    title = "Dolby Atmos",
+                    value = onOff(dolbyAtmos),
+                    onFocused = { blurb = "Plays Dolby Atmos (E-AC-3 JOC) immersive audio when available, followed by Hi-Res Lossless." },
+                    onClick = { AppSettings.setDolbyAtmos(!dolbyAtmos) },
+                )
+            }
             item {
                 TvListRow(
                     title = "Equalizer",
