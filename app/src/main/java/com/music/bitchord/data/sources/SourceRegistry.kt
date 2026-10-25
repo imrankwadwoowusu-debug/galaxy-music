@@ -15,6 +15,14 @@ import com.music.bitchord.data.sources.addon.SourceFormats
 import com.music.bitchord.data.settings.AudioQuality
 import com.music.bitchord.playback.audio.LosslessOutput
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.music.bitchord.data.Http
+import okhttp3.Request
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -85,6 +93,12 @@ data class SourceConfig(
  * is present but off until the user accepts its catalogue-matching risk.
  */
 object SourceRegistry {
+    data class AddonHealthInfo(
+        val configId: String,
+        val online: Boolean,
+        val latencyMs: Long,
+        val statusText: String,
+    )
 
     private const val TAG = "BitChord"
 
@@ -568,9 +582,9 @@ object SourceRegistry {
         SourceConfig(
             id = "app.bitchord.lastbabe",
             kind = SourceKind.ADDON,
-            label = "Last Babe (48h Summoner)",
-            baseUrl = "https://lastbabe.velixir.run/manifest.json",
-            enabled = false,
+            label = "Last Babe (Lossless FLAC)",
+            baseUrl = "https://lastbabe.velixir.run/e/1793086716/56ab9b9f20a6a8f7cd1cddd6cad00572/manifest.json",
+            enabled = true,
             allowDownloads = true,
             checkValidLossless = false,
         ),
@@ -629,6 +643,61 @@ object SourceRegistry {
             checkValidLossless = false,
         ),
     )
+
+    suspend fun checkAddonsHealth(): Map<String, AddonHealthInfo> = withContext(Dispatchers.IO) {
+        val addons = configs.value.filter { it.kind == SourceKind.ADDON && it.baseUrl.isNotBlank() }
+        val results = ConcurrentHashMap<String, AddonHealthInfo>()
+        val probeClient = Http.client.newBuilder()
+            .connectTimeout(4, TimeUnit.SECONDS)
+            .readTimeout(4, TimeUnit.SECONDS)
+            .callTimeout(4, TimeUnit.SECONDS)
+            .build()
+
+        coroutineScope {
+            addons.forEach { addon ->
+                launch {
+                    val url = if (addon.baseUrl.endsWith(".json", ignoreCase = true)) addon.baseUrl else addon.baseUrl.trimEnd('/') + "/manifest.json"
+                    val start = System.currentTimeMillis()
+                    val info = try {
+                        val req = Request.Builder()
+                            .url(url)
+                            .header("User-Agent", "BitChord/v1.8.1")
+                            .get()
+                            .build()
+                        val resp = probeClient.newCall(req).execute()
+                        val elapsed = System.currentTimeMillis() - start
+                        val code = resp.code
+                        val body = resp.body?.string().orEmpty().trim()
+                        resp.close()
+                        if (code == 200 && (body.startsWith("{") || body.startsWith("["))) {
+                            AddonHealthInfo(addon.id, true, elapsed, "${elapsed} ms")
+                        } else {
+                            AddonHealthInfo(addon.id, false, 99999L, "HTTP $code")
+                        }
+                    } catch (e: Exception) {
+                        val msg = if (e is java.net.SocketTimeoutException) "Timeout" else "Offline"
+                        AddonHealthInfo(addon.id, false, 99999L, msg)
+                    }
+                    results[addon.id] = info
+                }
+            }
+        }
+        results
+    }
+
+    fun autoSortByLatency(healthMap: Map<String, AddonHealthInfo>) {
+        val addons = configs.value.filter { it.kind.isUserAdded }
+        if (addons.size < 2) return
+        val sorted = addons.sortedWith(
+            compareBy<SourceConfig> { config ->
+                val h = healthMap[config.id]
+                if (h != null && h.online) 0 else 1
+            }.thenBy { config ->
+                healthMap[config.id]?.latencyMs ?: 99999L
+            }
+        )
+        publish(sorted + configs.value.filterNot { it.kind.isUserAdded })
+    }
 
     fun resetToPrebaked() {
         publish(PREBAKED_SOURCES + BUILT_IN_KINDS.map { SourceConfig(kind = it) })

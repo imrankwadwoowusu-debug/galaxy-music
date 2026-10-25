@@ -1363,6 +1363,8 @@ fun TvLosslessAddonsDialog(onDismiss: () -> Unit) {
     var inputUrl by remember { mutableStateOf("") }
     var inputError by remember { mutableStateOf<String?>(null) }
     var isChecking by remember { mutableStateOf(false) }
+    var healthMap by remember { mutableStateOf<Map<String, SourceRegistry.AddonHealthInfo>?>(null) }
+    var isCheckingHealth by remember { mutableStateOf(false) }
 
     TvDialog(
         title = "Lossless Addons",
@@ -1440,10 +1442,16 @@ fun TvLosslessAddonsDialog(onDismiss: () -> Unit) {
             ) {
                 itemsIndexed(addons, key = { _, addon -> addon.id }) { index, addon ->
                     val checked = addon.enabled
+                    val health = healthMap?.get(addon.id)
+                    val rankValue = if (health != null) {
+                        "#${index + 1} • ${health.statusText}"
+                    } else {
+                        "#${index + 1}"
+                    }
                     TvListRow(
                         title = addon.displayName,
                         subtitle = addon.baseUrl,
-                        value = "#${index + 1}",
+                        value = rankValue,
                         leadingIcon = if (checked) Icons.Rounded.Check else null,
                         modifier = Modifier
                             .tvInitialFocus(enabled = index == 0)
@@ -1476,7 +1484,45 @@ fun TvLosslessAddonsDialog(onDismiss: () -> Unit) {
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TvDialogButton(
+                    text = if (isCheckingHealth) "Testing..." else "Test Addons",
+                    onClick = {
+                        if (!isCheckingHealth) {
+                            isCheckingHealth = true
+                            scope.launch {
+                                val res = SourceRegistry.checkAddonsHealth()
+                                healthMap = res
+                                isCheckingHealth = false
+                            }
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                TvDialogButton(
+                    text = "Auto-Prioritize",
+                    onClick = {
+                        val current = healthMap
+                        if (current != null) {
+                            SourceRegistry.autoSortByLatency(current)
+                        } else {
+                            isCheckingHealth = true
+                            scope.launch {
+                                val res = SourceRegistry.checkAddonsHealth()
+                                healthMap = res
+                                SourceRegistry.autoSortByLatency(res)
+                                isCheckingHealth = false
+                            }
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
             TvDialogButton(text = "Reset to Recommended", onClick = SourceRegistry::resetToPrebaked)
             Spacer(modifier = Modifier.height(6.dp))
             TvDialogButton(text = "Done", onClick = onDismiss)
