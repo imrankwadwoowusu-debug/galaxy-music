@@ -136,8 +136,16 @@ This fork ([mandy321/BitChord](https://github.com/mandy321/BitChord)) adds exclu
 - **Apple Music Motion Art Default**: Prioritizes official, studio-commissioned Apple Music HLS motion covers by default across both TV and mobile.
 - **Interactive Source Switcher**: Added a direct "Motion Art Source" row in TV Settings (`Apple Music` ↔ `Spotify Canvas`) and a quick toggle under Animated Cover Art in Mobile Settings, giving users instant control over their visual playback experience.
 
+#### 8. BitChord Connect (Spotify Connect-Style TV Remote Playback)
+- **Local LAN Discovery & Remote Control**: Automatically discovers running BitChord TV instances (Amazon Fire TV Stick, Google TV, Android TV) on the local Wi-Fi network without complex pairing or pairing codes.
+- **Synchronized Playback & Queue Handoff**: Tap the Audio Output icon in Mobile Now Playing to seamlessly transfer playback from phone to TV at the exact millisecond.
+- **Bi-Directional Remote Controls**: Phone acts as an interactive remote controller for TV playback (Play/Pause, Next/Prev, track seek scrubbing, and volume controls).
+- **Intelligent Pause-on-Switch & Disconnect**: Automatically sends `ACTION_PAUSE` to previous remote devices when switching between TV targets or handing back to the phone, preventing overlapping audio.
+- **Leanback TV Notification**: TV displays an elegant animated connection banner (`Connected to <Phone>`) when controlled by mobile.
+
 ### BitChord TV & Lossless Audio Upgrade
 BitChord TV is optimized for Android TV and Fire TV devices with Leanback navigation and autonomous lossless playback:
+- **BitChord Connect Server:** Built-in embedded control server and mDNS broadcaster for wireless phone-to-TV streaming control.
 - **Zero-Configuration Lossless Audio:** Prebuilt integration with lossless providers (Lossless Bridge, Qobuz, Deezer) out-of-the-box.
 - **Smart Video-to-Audio Drift Compensation:** Automatic handling of video intro/outro duration drift (up to 90 seconds) for music videos such as Rihanna's *Diamonds* and Justin Bieber's *Love Yourself*.
 - **Sub-15ms Cold-Load Home Feed:** Instant disk caching for all Home feed rows.
