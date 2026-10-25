@@ -756,8 +756,24 @@ class PlaybackService : MediaLibraryService() {
         WearBridge.createSpeaker(this, scope, localPlayer = { player }, onChanged = { publishWidgetState() })
     }
 
+    private val connectSpeaker by lazy {
+        com.music.bitchord.playback.connect.BitChordConnectManager.initialize(
+            context = this,
+            playerProvider = { player },
+            onPlaySongsRequested = { songs, startIndex, positionMs ->
+                scope.launch(Dispatchers.Main) {
+                    val p = player ?: return@launch
+                    val items = songs.map { it.toMediaItem() }
+                    p.setMediaItems(items, startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0)), positionMs)
+                    p.prepare()
+                    p.play()
+                }
+            },
+        )
+    }
+
     /** Every remote speaker, as the one the session player reports. */
-    private val speakers by lazy { Speakers(listOf(castPlayback, watchSpeaker)) }
+    private val speakers by lazy { Speakers(listOf(castPlayback, watchSpeaker, connectSpeaker)) }
 
     /**
      * Binds playback to a Listen Together party, when there is one.
@@ -1332,6 +1348,8 @@ class PlaybackService : MediaLibraryService() {
                 )
             }
         }
+        // BitChord Connect: start local server and discovery
+        runCatching { connectSpeaker }
         // Signing in or out adds or removes Like everywhere at once.
         scope.launch {
             SignedIn.state(this@PlaybackService)

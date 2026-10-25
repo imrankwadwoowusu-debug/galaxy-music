@@ -1,5 +1,7 @@
 package com.music.bitchord.ui.player
 
+import com.music.bitchord.playback.connect.BitChordConnectManager
+import com.music.bitchord.playback.connect.ConnectCommand
 import com.music.bitchord.wear.WearBridge
 import android.content.Context
 import android.database.ContentObserver
@@ -104,9 +106,10 @@ class AndroidPlayerHost(context: Context) : PlayerHost {
         val outputs = rememberAndroidAudioOutputs()
         val cast by CastController.state.collectAsStateWithLifecycle()
         val watch by WearBridge.watchOutput.collectAsStateWithLifecycle()
-        // While a receiver is the speaker no output of this phone is the one
-        // playing, so none of them is lit; the Cast or watch row is.
-        return if (cast.casting || watch.active) outputs.map { it.copy(isActive = false) } else outputs
+        val connect by BitChordConnectManager.connectUi.collectAsStateWithLifecycle()
+        // While a receiver or TV is the speaker no output of this phone is the one
+        // playing, so none of them is lit; the Cast, watch, or Connect row is.
+        return if (cast.casting || watch.active || connect.isConnected) outputs.map { it.copy(isActive = false) } else outputs
     }
 
     @Composable
@@ -116,8 +119,27 @@ class AndroidPlayerHost(context: Context) : PlayerHost {
         // Picking an output of this phone is picking this phone: the receiver
         // is let go of, and the music carries on here if it was playing.
         if (CastController.state.value.casting) CastController.disconnect(resumeHere = true)
+        if (BitChordConnectManager.isConnected) BitChordConnectManager.disconnect(resumeHere = true)
         AudioRouting.select(id)
         WearBridge.leaveWatchOutput()
+    }
+
+    override val connectUi: StateFlow<ConnectUi>
+        get() = BitChordConnectManager.connectUi
+
+    override fun refreshConnectDevices() {
+        BitChordConnectManager.refreshDiscovery(app)
+    }
+
+    override fun selectConnectDevice(id: String) {
+        if (CastController.state.value.casting) CastController.disconnect(resumeHere = false)
+        WearBridge.leaveWatchOutput()
+        val device = BitChordConnectManager.discoveredDevices.value.firstOrNull { it.id == id } ?: return
+        BitChordConnectManager.connectTo(device)
+    }
+
+    override fun disconnectConnectDevice(resumeHere: Boolean) {
+        BitChordConnectManager.disconnect(resumeHere)
     }
 
     override val watchOutput: StateFlow<WatchOutputUi> by lazy {
@@ -132,6 +154,7 @@ class AndroidPlayerHost(context: Context) : PlayerHost {
         // One speaker at a time: a receiver lets go first, quietly, and the
         // watch picks the queue up from where the phone's player is.
         if (CastController.state.value.casting) CastController.disconnect(resumeHere = false)
+        if (BitChordConnectManager.isConnected) BitChordConnectManager.disconnect(resumeHere = false)
         WearBridge.selectWatchOutput()
     }
 
@@ -246,8 +269,10 @@ private class CastAwareVolume(
         CastController.volume,
         CastController.state.map { it.casting },
         WearBridge.watchOutput,
-    ) { phone, receiver, casting, watch ->
+        BitChordConnectManager.activeDevice,
+    ) { phone, receiver, casting, watch, connectDevice ->
         when {
+            connectDevice != null -> phone
             casting -> receiver
             watch.active -> watch.volume
             else -> phone
@@ -257,6 +282,14 @@ private class CastAwareVolume(
 
     override fun set(level: Float) {
         when {
+            BitChordConnectManager.isConnected -> {
+                BitChordConnectManager.sendCommand(
+                    com.music.bitchord.playback.connect.ConnectCommand(
+                        action = com.music.bitchord.playback.connect.ConnectCommand.ACTION_SET_VOLUME,
+                        volume = level,
+                    ),
+                )
+            }
             CastController.state.value.casting -> CastController.setVolume(level)
             WearBridge.watchOutput.value.active -> WearBridge.setWatchVolume(level)
             else -> system.set(level)

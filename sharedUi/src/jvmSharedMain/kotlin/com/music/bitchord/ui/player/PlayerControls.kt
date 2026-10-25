@@ -910,12 +910,14 @@ private fun OutputPartyPill(
 ) {
     val badge = rememberPartyBadge()
     val output = rememberOutputGlyph()
+    val connect by PlayerPlatform.host.connectUi.collectAsStateWithLifecycle()
     Pill {
         PillSegment(
             icon = output.icon,
             iconSize = output.size,
             contentDescription = stringResource(Res.string.audio_output),
             onClick = onOutput,
+            highlighted = connect.isConnected,
         )
         PillDivider()
         PillSegment(
@@ -952,10 +954,12 @@ private fun OutputPartyPill(
  */
 @Composable
 private fun rememberOutputGlyph(): OutputGlyph {
+    val connect by PlayerPlatform.host.connectUi.collectAsStateWithLifecycle()
     val cast by PlayerPlatform.host.castState.collectAsStateWithLifecycle()
     val watch by PlayerPlatform.host.watchOutput.collectAsStateWithLifecycle()
     val active = rememberAudioOutputs().firstOrNull { it.isActive }
     return when {
+        connect.activeDeviceName != null -> OutputGlyph(Icons.Rounded.Tv, PILL_OUTPUT_WIDE_SIZE)
         cast.connectedName != null -> OutputGlyph(Icons.Rounded.CastConnected, PILL_OUTPUT_WIDE_SIZE)
         watch.active -> OutputGlyph(Icons.Rounded.Watch, PILL_OUTPUT_TALL_SIZE)
         else -> when (active?.kind) {
@@ -1126,6 +1130,34 @@ internal fun OutputCaption(
     val captionModifier = Modifier
         .fillMaxWidth(0.65f)
         .clickable { if (badge.inParty) onOpenMembers() else onOpenOutput() }
+    val connect by PlayerPlatform.host.connectUi.collectAsStateWithLifecycle()
+    if (!badge.inParty && connect.isConnected && connect.activeDeviceName != null) {
+        Row(
+            modifier = captionModifier,
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF1DB954)),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "Listening on ${connect.activeDeviceName}",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF1DB954),
+                    textAlign = TextAlign.Center,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        return
+    }
     if (!badge.inParty && isHiResOutput) {
         ShimmerText(
             text = outputName,
