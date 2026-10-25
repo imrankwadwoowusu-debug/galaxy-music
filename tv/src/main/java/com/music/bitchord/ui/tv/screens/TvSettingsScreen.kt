@@ -219,7 +219,7 @@ fun TvSettingsScreen(
             }
             item {
                 TvListRow(
-                    title = "Sound Check",
+                    title = "Normalization",
                     value = onOff(loudness),
                     onFocused = { blurb = "Plays every song at the same perceived loudness." },
                     onClick = { AppSettings.setLoudnessNormalization(!loudness) },
