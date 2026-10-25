@@ -82,6 +82,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.music.bitchord.BuildConfig
@@ -89,7 +91,9 @@ import com.music.bitchord.auth.GoogleAccountSession
 import com.music.bitchord.auth.WebSessionMode
 import com.music.bitchord.auth.YouTubeProfile
 import com.music.bitchord.data.lyrics.LyricsSource
+import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
+import kotlinx.coroutines.launch
 import com.music.bitchord.data.settings.TvPinThrottle
 import com.music.bitchord.data.settings.TvSettings
 import kotlin.math.ceil
@@ -1181,34 +1185,324 @@ fun TvDiscordDialog(onDismiss: () -> Unit) {
     }
 }
 
+private enum class TvScrobbleView {
+    OVERVIEW,
+    LASTFM_LOGIN,
+    LASTFM_MANAGE,
+    LISTENBRAINZ_LOGIN,
+    LISTENBRAINZ_MANAGE,
+}
+
 @Composable
 fun TvScrobbleDialog(onDismiss: () -> Unit) {
     val lastfmEnabled by AppSettings.lastfmEnabled.collectAsState()
     val lastfmUser by AppSettings.lastfmUsername.collectAsState()
+    val lastfmScrobbleEnabled by AppSettings.lastfmScrobbleEnabled.collectAsState()
+    val lastfmNowPlaying by AppSettings.lastfmNowPlaying.collectAsState()
     val listenBrainzEnabled by AppSettings.listenBrainzEnabled.collectAsState()
     val listenBrainzToken by AppSettings.listenBrainzToken.collectAsState()
+    val listenBrainzPrimaryArtistOnly by AppSettings.listenBrainzPrimaryArtistOnly.collectAsState()
 
-    TvDialog(
-        title = "Scrobbling",
-        message = "Connect these on the BitChord phone app; the TV uses the same accounts.",
-        onDismissRequest = onDismiss,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            TvListRow(
-                title = "Last.fm",
-                value = if (lastfmEnabled && lastfmUser.isNotBlank()) lastfmUser else "Not Connected",
-                enabled = false,
-                onClick = {},
-            )
-            TvListRow(
-                title = "ListenBrainz",
-                value = if (listenBrainzEnabled && listenBrainzToken.isNotBlank()) "Connected" else "Not Connected",
-                enabled = false,
-                onClick = {},
-            )
+    var view by remember { mutableStateOf(TvScrobbleView.OVERVIEW) }
+    BackHandler(enabled = view != TvScrobbleView.OVERVIEW) {
+        view = TvScrobbleView.OVERVIEW
+    }
+
+    when (view) {
+        TvScrobbleView.OVERVIEW -> {
+            TvDialog(
+                title = "Scrobbling",
+                message = "Connect your scrobbler accounts to track plays on your TV.",
+                onDismissRequest = onDismiss,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    TvListRow(
+                        title = "Last.fm",
+                        value = if (lastfmEnabled && lastfmUser.isNotBlank()) lastfmUser else "Not Connected",
+                        enabled = true,
+                        onClick = {
+                            view = if (lastfmEnabled && lastfmUser.isNotBlank()) {
+                                TvScrobbleView.LASTFM_MANAGE
+                            } else {
+                                TvScrobbleView.LASTFM_LOGIN
+                            }
+                        },
+                    )
+                    TvListRow(
+                        title = "ListenBrainz",
+                        value = if (listenBrainzEnabled && listenBrainzToken.isNotBlank()) "Connected" else "Not Connected",
+                        enabled = true,
+                        onClick = {
+                            view = if (listenBrainzEnabled && listenBrainzToken.isNotBlank()) {
+                                TvScrobbleView.LISTENBRAINZ_MANAGE
+                            } else {
+                                TvScrobbleView.LISTENBRAINZ_LOGIN
+                            }
+                        },
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                TvDialogButton(text = "OK", onClick = onDismiss, initialFocus = true)
+            }
         }
-        Spacer(modifier = Modifier.height(16.dp))
-        TvDialogButton(text = "OK", onClick = onDismiss, initialFocus = true)
+        TvScrobbleView.LASTFM_LOGIN -> {
+            var username by remember { mutableStateOf("") }
+            var password by remember { mutableStateOf("") }
+            var sessionKey by remember { mutableStateOf("") }
+            var apiKeyInput by remember { mutableStateOf(AppSettings.lastfmApiKey.value.ifBlank { BuildConfig.LASTFM_API_KEY }) }
+            var secretInput by remember { mutableStateOf(AppSettings.lastfmSecret.value.ifBlank { BuildConfig.LASTFM_SECRET }) }
+            var useSessionKey by remember { mutableStateOf(false) }
+            var showApiKeys by remember { mutableStateOf(false) }
+            var isLoading by remember { mutableStateOf(false) }
+            var errorMessage by remember { mutableStateOf<String?>(null) }
+            val scope = rememberCoroutineScope()
+
+            val performLogin: () -> Unit = {
+                val effectiveApiKey = apiKeyInput.trim().ifBlank { AppSettings.lastfmApiKey.value.ifBlank { BuildConfig.LASTFM_API_KEY } }
+                val effectiveSecret = secretInput.trim().ifBlank { AppSettings.lastfmSecret.value.ifBlank { BuildConfig.LASTFM_SECRET } }
+                if (effectiveApiKey.isBlank() || effectiveSecret.isBlank()) {
+                    showApiKeys = true
+                    errorMessage = "Please enter Last.fm API Key & Secret, or switch to Session Key."
+                } else {
+                    isLoading = true
+                    errorMessage = null
+                    scope.launch {
+                        try {
+                            AppSettings.setLastfmApiKey(effectiveApiKey)
+                            AppSettings.setLastfmSecret(effectiveSecret)
+                            LastFM.initialize(apiKey = effectiveApiKey, secret = effectiveSecret)
+                            LastFM.getMobileSession(username.trim(), password)
+                                .onSuccess { auth ->
+                                    AppSettings.setLastfmSessionKey(auth.session.key)
+                                    AppSettings.setLastfmUsername(auth.session.name)
+                                    AppSettings.setLastfmEnabled(true)
+                                    AppSettings.setLastfmScrobbleEnabled(true)
+                                    AppSettings.setLastfmNowPlaying(true)
+                                    view = TvScrobbleView.OVERVIEW
+                                }
+                                .onFailure { e ->
+                                    errorMessage = e.message ?: "Sign in failed. Please verify credentials."
+                                }
+                        } catch (e: Exception) {
+                            errorMessage = e.message ?: "An unexpected error occurred."
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+                }
+            }
+
+            val performSessionKeyConnect: () -> Unit = {
+                if (username.isBlank() || sessionKey.isBlank()) {
+                    errorMessage = "Please enter both username and session key."
+                } else {
+                    val effectiveApiKey = apiKeyInput.trim().ifBlank { AppSettings.lastfmApiKey.value.ifBlank { BuildConfig.LASTFM_API_KEY } }
+                    val effectiveSecret = secretInput.trim().ifBlank { AppSettings.lastfmSecret.value.ifBlank { BuildConfig.LASTFM_SECRET } }
+                    if (effectiveApiKey.isNotBlank()) AppSettings.setLastfmApiKey(effectiveApiKey)
+                    if (effectiveSecret.isNotBlank()) AppSettings.setLastfmSecret(effectiveSecret)
+                    AppSettings.setLastfmSessionKey(sessionKey.trim())
+                    AppSettings.setLastfmUsername(username.trim())
+                    AppSettings.setLastfmEnabled(true)
+                    AppSettings.setLastfmScrobbleEnabled(true)
+                    AppSettings.setLastfmNowPlaying(true)
+                    view = TvScrobbleView.OVERVIEW
+                }
+            }
+
+            TvDialog(
+                title = "Last.fm Sign In",
+                message = if (useSessionKey) "Enter your Last.fm username and Session Key." else "Sign in with your Last.fm account.",
+                onDismissRequest = { view = TvScrobbleView.OVERVIEW },
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TvTextField(
+                        value = username,
+                        onValueChange = { username = it; errorMessage = null },
+                        placeholder = "Username",
+                        imeAction = ImeAction.Next,
+                        modifier = Modifier.tvInitialFocus(),
+                    )
+                    if (useSessionKey) {
+                        TvTextField(
+                            value = sessionKey,
+                            onValueChange = { sessionKey = it; errorMessage = null },
+                            placeholder = "Session Key (sk)",
+                            imeAction = if (showApiKeys) ImeAction.Next else ImeAction.Done,
+                            onImeAction = performSessionKeyConnect,
+                        )
+                    } else {
+                        TvTextField(
+                            value = password,
+                            onValueChange = { password = it; errorMessage = null },
+                            placeholder = "Password",
+                            visualTransformation = PasswordVisualTransformation(),
+                            imeAction = if (showApiKeys) ImeAction.Next else ImeAction.Done,
+                            onImeAction = performLogin,
+                        )
+                    }
+                    if (showApiKeys) {
+                        TvTextField(
+                            value = apiKeyInput,
+                            onValueChange = { apiKeyInput = it; errorMessage = null },
+                            placeholder = "API Key (32 hex characters)",
+                            imeAction = ImeAction.Next,
+                        )
+                        TvTextField(
+                            value = secretInput,
+                            onValueChange = { secretInput = it; errorMessage = null },
+                            placeholder = "Shared Secret",
+                            visualTransformation = PasswordVisualTransformation(),
+                            imeAction = ImeAction.Done,
+                            onImeAction = if (useSessionKey) performSessionKeyConnect else performLogin,
+                        )
+                    }
+                    if (errorMessage != null) {
+                        Text(
+                            text = errorMessage!!,
+                            style = TvType.Caption,
+                            color = Color(0xFFFF5252),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                if (useSessionKey) {
+                    TvDialogButton(
+                        text = "Connect Session Key",
+                        enabled = !isLoading && username.isNotBlank() && sessionKey.isNotBlank(),
+                        onClick = performSessionKeyConnect,
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    TvDialogButton(
+                        text = "Use Password Instead",
+                        enabled = !isLoading,
+                        onClick = { useSessionKey = false; errorMessage = null },
+                    )
+                } else {
+                    TvDialogButton(
+                        text = if (isLoading) "Signing In..." else "Sign In",
+                        enabled = !isLoading && username.isNotBlank() && password.isNotBlank(),
+                        onClick = performLogin,
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    TvDialogButton(
+                        text = "Use Session Key Instead",
+                        enabled = !isLoading,
+                        onClick = { useSessionKey = true; errorMessage = null },
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                TvDialogButton(
+                    text = if (showApiKeys) "Hide API Key Settings" else "Custom API Key Settings",
+                    enabled = !isLoading,
+                    onClick = { showApiKeys = !showApiKeys },
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                TvDialogButton(
+                    text = "Cancel",
+                    enabled = !isLoading,
+                    onClick = { view = TvScrobbleView.OVERVIEW },
+                )
+            }
+        }
+        TvScrobbleView.LASTFM_MANAGE -> {
+            TvDialog(
+                title = "Last.fm",
+                message = "Signed in as $lastfmUser",
+                onDismissRequest = { view = TvScrobbleView.OVERVIEW },
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    TvListRow(
+                        title = "Scrobble Tracks",
+                        value = if (lastfmScrobbleEnabled) "On" else "Off",
+                        onClick = { AppSettings.setLastfmScrobbleEnabled(!lastfmScrobbleEnabled) },
+                    )
+                    TvListRow(
+                        title = "Now Playing Status",
+                        value = if (lastfmNowPlaying) "On" else "Off",
+                        onClick = { AppSettings.setLastfmNowPlaying(!lastfmNowPlaying) },
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                TvDialogButton(
+                    text = "Disconnect Account",
+                    destructive = true,
+                    onClick = {
+                        AppSettings.setLastfmSessionKey("")
+                        AppSettings.setLastfmUsername("")
+                        AppSettings.setLastfmEnabled(false)
+                        AppSettings.setLastfmScrobbleEnabled(false)
+                        AppSettings.setLastfmNowPlaying(false)
+                        view = TvScrobbleView.OVERVIEW
+                    },
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                TvDialogButton(text = "Back", onClick = { view = TvScrobbleView.OVERVIEW }, initialFocus = true)
+            }
+        }
+        TvScrobbleView.LISTENBRAINZ_LOGIN -> {
+            var token by remember { mutableStateOf("") }
+            TvDialog(
+                title = "ListenBrainz",
+                message = "Enter your user token from listenbrainz.org/profile to enable scrobbling.",
+                onDismissRequest = { view = TvScrobbleView.OVERVIEW },
+            ) {
+                TvTextField(
+                    value = token,
+                    onValueChange = { token = it },
+                    placeholder = "User Token",
+                    imeAction = ImeAction.Done,
+                    modifier = Modifier.tvInitialFocus(),
+                    onImeAction = {
+                        if (token.isNotBlank()) {
+                            AppSettings.setListenBrainzToken(token.trim())
+                            AppSettings.setListenBrainzEnabled(true)
+                            view = TvScrobbleView.OVERVIEW
+                        }
+                    },
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                TvDialogButton(
+                    text = "Connect",
+                    enabled = token.isNotBlank(),
+                    onClick = {
+                        AppSettings.setListenBrainzToken(token.trim())
+                        AppSettings.setListenBrainzEnabled(true)
+                        view = TvScrobbleView.OVERVIEW
+                    },
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                TvDialogButton(text = "Cancel", onClick = { view = TvScrobbleView.OVERVIEW })
+            }
+        }
+        TvScrobbleView.LISTENBRAINZ_MANAGE -> {
+            TvDialog(
+                title = "ListenBrainz",
+                message = "Account connected.",
+                onDismissRequest = { view = TvScrobbleView.OVERVIEW },
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    TvListRow(
+                        title = "Primary Artist Only",
+                        value = if (listenBrainzPrimaryArtistOnly) "On" else "Off",
+                        onClick = { AppSettings.setListenBrainzPrimaryArtistOnly(!listenBrainzPrimaryArtistOnly) },
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                TvDialogButton(
+                    text = "Disconnect Account",
+                    destructive = true,
+                    onClick = {
+                        AppSettings.setListenBrainzToken("")
+                        AppSettings.setListenBrainzEnabled(false)
+                        view = TvScrobbleView.OVERVIEW
+                    },
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                TvDialogButton(text = "Back", onClick = { view = TvScrobbleView.OVERVIEW }, initialFocus = true)
+            }
+        }
     }
 }
 

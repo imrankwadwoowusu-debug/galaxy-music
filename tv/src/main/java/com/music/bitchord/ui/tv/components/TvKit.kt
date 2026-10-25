@@ -941,6 +941,8 @@ fun TvTextField(
     imeAction: androidx.compose.ui.text.input.ImeAction = androidx.compose.ui.text.input.ImeAction.Done,
     capitalization: androidx.compose.ui.text.input.KeyboardCapitalization =
         androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+    visualTransformation: androidx.compose.ui.text.input.VisualTransformation =
+        androidx.compose.ui.text.input.VisualTransformation.None,
     onImeAction: () -> Unit = {},
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -952,6 +954,7 @@ fun TvTextField(
         onValueChange = onValueChange,
         singleLine = true,
         interactionSource = interaction,
+        visualTransformation = visualTransformation,
         textStyle = TvType.Body.copy(fontSize = 14.sp, color = textColor),
         cursorBrush = androidx.compose.ui.graphics.SolidColor(textColor),
         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(

@@ -85,6 +85,7 @@ fun TvSettingsScreen(
     val syncedLyrics by AppSettings.syncedLyrics.collectAsState()
     val lyricsSources by AppSettings.lyricsSources.collectAsState()
     val canvas by AppSettings.animatedCanvas.collectAsState()
+    val prioritizeSpotifyCanvas by AppSettings.prioritizeSpotifyCanvas.collectAsState()
     val lyricsCanvas by TvSettings.tvLyricsCanvasEnabled.collectAsState()
     val nerdStats by AppSettings.showNerdStats.collectAsState()
     val themeId by TvSettings.tvTheme.collectAsState()
@@ -269,13 +270,23 @@ fun TvSettingsScreen(
                     onClick = { AppSettings.setAnimatedCanvas(!canvas) },
                 )
             }
-            item {
-                TvListRow(
-                    title = "Motion Artwork in Lyrics",
-                    value = onOff(lyricsCanvas),
-                    onFocused = { blurb = "Keeps the video artwork playing behind full-screen lyrics." },
-                    onClick = { TvSettings.setTvLyricsCanvasEnabled(!lyricsCanvas) },
-                )
+            if (canvas) {
+                item {
+                    TvListRow(
+                        title = "Motion Art Source",
+                        value = if (prioritizeSpotifyCanvas) "Spotify Canvas" else "Apple Music",
+                        onFocused = { blurb = "Prioritize official Apple Music motion covers (default) or Spotify Canvas." },
+                        onClick = { AppSettings.setPrioritizeSpotifyCanvas(!prioritizeSpotifyCanvas) },
+                    )
+                }
+                item {
+                    TvListRow(
+                        title = "Motion Artwork in Lyrics",
+                        value = onOff(lyricsCanvas),
+                        onFocused = { blurb = "Keeps the video artwork playing behind full-screen lyrics." },
+                        onClick = { TvSettings.setTvLyricsCanvasEnabled(!lyricsCanvas) },
+                    )
+                }
             }
             item {
                 TvListRow(

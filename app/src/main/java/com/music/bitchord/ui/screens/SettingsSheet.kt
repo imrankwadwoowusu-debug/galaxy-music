@@ -217,6 +217,7 @@ fun SettingsScreen(
     val lyricsBlur by AppSettings.lyricsBlur.collectAsStateWithLifecycle()
     val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
     val canvasOverCellular by AppSettings.canvasOverCellular.collectAsStateWithLifecycle()
+    val prioritizeSpotifyCanvas by AppSettings.prioritizeSpotifyCanvas.collectAsStateWithLifecycle()
     val signatureApiEnabled by AppSettings.signatureApiEnabled.collectAsStateWithLifecycle()
     val signatureApiUrl by AppSettings.signatureApiUrl.collectAsStateWithLifecycle()
     val fullBleedArtwork by AppSettings.fullBleedArtwork.collectAsStateWithLifecycle()
@@ -913,6 +914,14 @@ fun SettingsScreen(
                         title = coverCellularTitle,
                         checked = canvasOverCellular,
                         onCheckedChange = AppSettings::setCanvasOverCellular,
+                    )
+                }
+                val prioritizeSpotifyTitle = stringResource(R.string.prioritize_spotify_canvas)
+                row(prioritizeSpotifyTitle, "spotify", "canvas", "prioritize", divided = false) {
+                    SettingsSubRow(
+                        title = prioritizeSpotifyTitle,
+                        checked = prioritizeSpotifyCanvas,
+                        onCheckedChange = AppSettings::setPrioritizeSpotifyCanvas,
                     )
                 }
                 val spotifyCanvasTitle = stringResource(R.string.integrate_spotify_canvas)

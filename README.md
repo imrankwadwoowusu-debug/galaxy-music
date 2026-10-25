@@ -125,6 +125,17 @@ This fork ([mandy321/BitChord](https://github.com/mandy321/BitChord)) adds exclu
 - **Normalization (Sound Check)**: Renamed to **"Normalization"** in Settings and defaulted to **OFF** to preserve untouched, bit-exact sample playback.
 - **Clean Signal Path**: Automix (OFF), Crossfade (0s), Equalizer (OFF), Spatial Audio (OFF), USB DAC (OFF), Autoplay (ON), Dolby Atmos (ON).
 
+#### 6. Interactive TV Scrobbling (Last.fm & ListenBrainz)
+- **Direct TV Authentication**: Built native Leanback dialogs for signing into Last.fm and ListenBrainz directly on the TV interface.
+- **Last.fm Credentials or Session Key**: Supports standard username/password login (`auth.getMobileSession`) or direct Session Key (`sk`) entry (convenient via Google TV / Fire TV mobile remote apps).
+- **Custom API Key Support**: Expandable drawer to enter or override Last.fm API Key & Secret if running a custom build without environment secrets.
+- **ListenBrainz Token Integration**: Direct input for ListenBrainz user tokens.
+- **Live Account Status & Control**: Displays connected usernames, one-click disconnect, and independent toggles for track scrobbling, "Now Playing" broadcast, and primary artist filtering.
+
+#### 7. Motion Artwork Source Prioritization (Apple Music vs. Spotify Canvas)
+- **Apple Music Motion Art Default**: Prioritizes official, studio-commissioned Apple Music HLS motion covers by default across both TV and mobile.
+- **Interactive Source Switcher**: Added a direct "Motion Art Source" row in TV Settings (`Apple Music` ↔ `Spotify Canvas`) and a quick toggle under Animated Cover Art in Mobile Settings, giving users instant control over their visual playback experience.
+
 ### BitChord TV & Lossless Audio Upgrade
 BitChord TV is optimized for Android TV and Fire TV devices with Leanback navigation and autonomous lossless playback:
 - **Zero-Configuration Lossless Audio:** Prebuilt integration with lossless providers (Lossless Bridge, Qobuz, Deezer) out-of-the-box.
