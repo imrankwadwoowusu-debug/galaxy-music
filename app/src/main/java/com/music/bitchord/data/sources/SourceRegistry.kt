@@ -97,6 +97,8 @@ object SourceRegistry {
         val configId: String,
         val online: Boolean,
         val latencyMs: Long,
+        val qualityLabel: String = "Lossless",
+        val qualityRank: Int = 2,
         val statusText: String,
     )
 
@@ -670,13 +672,30 @@ object SourceRegistry {
                         val body = resp.body?.string().orEmpty().trim()
                         resp.close()
                         if (code == 200 && (body.startsWith("{") || body.startsWith("["))) {
-                            AddonHealthInfo(addon.id, true, elapsed, "${elapsed} ms")
+                            val lower = body.lowercase()
+                            val isAtmos = lower.contains("atmos") || lower.contains("eac3") || lower.contains("spatial")
+                            val isHiRes = lower.contains("hires") || lower.contains("hi-res") || lower.contains("24-bit") || lower.contains("master")
+                            val isLossless = lower.contains("lossless") || lower.contains("flac")
+                            val (qLabel, qRank) = when {
+                                isAtmos -> "Atmos / Hi-Res" to 4
+                                isHiRes -> "Hi-Res FLAC" to 3
+                                isLossless -> "Lossless FLAC" to 2
+                                else -> "High (320k)" to 1
+                            }
+                            AddonHealthInfo(
+                                configId = addon.id,
+                                online = true,
+                                latencyMs = elapsed,
+                                qualityLabel = qLabel,
+                                qualityRank = qRank,
+                                statusText = "$qLabel • ${elapsed} ms",
+                            )
                         } else {
-                            AddonHealthInfo(addon.id, false, 99999L, "HTTP $code")
+                            AddonHealthInfo(addon.id, false, 99999L, "Offline", 0, "HTTP $code")
                         }
                     } catch (e: Exception) {
                         val msg = if (e is java.net.SocketTimeoutException) "Timeout" else "Offline"
-                        AddonHealthInfo(addon.id, false, 99999L, msg)
+                        AddonHealthInfo(addon.id, false, 99999L, "Offline", 0, msg)
                     }
                     results[addon.id] = info
                 }
@@ -692,6 +711,8 @@ object SourceRegistry {
             compareBy<SourceConfig> { config ->
                 val h = healthMap[config.id]
                 if (h != null && h.online) 0 else 1
+            }.thenByDescending { config ->
+                healthMap[config.id]?.qualityRank ?: 0
             }.thenBy { config ->
                 healthMap[config.id]?.latencyMs ?: 99999L
             }
