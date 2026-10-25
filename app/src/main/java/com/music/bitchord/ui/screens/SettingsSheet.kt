@@ -218,6 +218,7 @@ fun SettingsScreen(
     val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
     val canvasOverCellular by AppSettings.canvasOverCellular.collectAsStateWithLifecycle()
     val prioritizeSpotifyCanvas by AppSettings.prioritizeSpotifyCanvas.collectAsStateWithLifecycle()
+    val strictLosslessOnly by AppSettings.strictLosslessOnly.collectAsStateWithLifecycle()
     val signatureApiEnabled by AppSettings.signatureApiEnabled.collectAsStateWithLifecycle()
     val signatureApiUrl by AppSettings.signatureApiUrl.collectAsStateWithLifecycle()
     val fullBleedArtwork by AppSettings.fullBleedArtwork.collectAsStateWithLifecycle()
@@ -512,6 +513,25 @@ fun SettingsScreen(
                         )
                     },
                     onClick = { AppSettings.setDolbyAtmos(!dolbyAtmos) },
+                )
+            }
+            val strictLosslessTitle = "Strict Lossless / Dolby Only"
+            row(strictLosslessTitle, "audiophile", "lossless", "dolby", "opus") {
+                SettingsRow(
+                    icon = Icons.Rounded.GraphicEq,
+                    title = strictLosslessTitle,
+                    subtitle = "Never falls back to lossy Opus. Automatically skips tracks if no Lossless or Dolby Atmos master is available.",
+                    trailing = {
+                        Switch(
+                            checked = strictLosslessOnly,
+                            onCheckedChange = AppSettings::setStrictLosslessOnly,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { AppSettings.setStrictLosslessOnly(!strictLosslessOnly) },
                 )
             }
         }

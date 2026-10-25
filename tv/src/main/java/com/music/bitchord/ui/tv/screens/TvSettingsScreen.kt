@@ -86,6 +86,7 @@ fun TvSettingsScreen(
     val lyricsSources by AppSettings.lyricsSources.collectAsState()
     val canvas by AppSettings.animatedCanvas.collectAsState()
     val prioritizeSpotifyCanvas by AppSettings.prioritizeSpotifyCanvas.collectAsState()
+    val strictLosslessOnly by AppSettings.strictLosslessOnly.collectAsState()
     val lyricsCanvas by TvSettings.tvLyricsCanvasEnabled.collectAsState()
     val nerdStats by AppSettings.showNerdStats.collectAsState()
     val themeId by TvSettings.tvTheme.collectAsState()
@@ -242,6 +243,14 @@ fun TvSettingsScreen(
                     value = "$activeAddons Active",
                     onFocused = { blurb = "Select to turn addons on or off, reorder priority with D-pad, or add custom lossless sources." },
                     onClick = { sheet = SettingsSheet.LosslessAddons },
+                )
+            }
+            item {
+                TvListRow(
+                    title = "Strict Lossless / Dolby Only",
+                    value = onOff(strictLosslessOnly),
+                    onFocused = { blurb = "Audiophile mode: only plays Dolby Atmos or Lossless FLAC. Skips tracks if no lossless master exists, never falling back to lossy Opus." },
+                    onClick = { AppSettings.setStrictLosslessOnly(!strictLosslessOnly) },
                 )
             }
 

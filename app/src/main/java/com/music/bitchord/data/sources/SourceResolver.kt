@@ -223,9 +223,13 @@ object SourceResolver {
         // Opus is a lesser copy of a different upload, and the listener chose
         // this addon's precisely to not be hearing it — see [MIX_PARAM].
         val fallbacks = active.filterNot {
-            it.configId == configId || (pickedMix != null && it.kind == SourceKind.YOUTUBE)
+            it.configId == configId || (pickedMix != null && it.kind == SourceKind.YOUTUBE) ||
+                (AppSettings.strictLosslessOnly.value && it.kind == SourceKind.YOUTUBE)
         }
         val (fallbackSource, stream) = bestAcross(fallbacks, target, request) ?: return null
+        if (AppSettings.strictLosslessOnly.value && stream.format.isLossless != true && !stream.format.isDolbyAtmos) {
+            return null
+        }
         TrackLog.d(TAG, "fallback: '${target.title}' served by ${fallbackSource.displayName}")
         return stream
     }

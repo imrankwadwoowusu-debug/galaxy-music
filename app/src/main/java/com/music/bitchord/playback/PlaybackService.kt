@@ -5319,6 +5319,13 @@ class PlaybackService : MediaLibraryService() {
             // [StreamResolver] parents the walk itself elsewhere and lets it
             // finish into its own cache.
             fallback.cancel()
+            val isEligible = quick.format.isLossless == true || quick.format.isDolbyAtmos
+            if (AppSettings.strictLosslessOnly.value && !isEligible) {
+                NerdStats.onLosslessRaceEnd(videoId)
+                throw StreamResolver.PermanentlyUnplayableException(
+                    "Skipped '${target.title}': No Lossless or Dolby Atmos stream found (Strict Mode)"
+                )
+            }
             // Everything that was asked for, ahead of the fallback: the
             // ordinary good case, and the one with no seam in it.
             if (!quick.belowRequest) {
@@ -5336,6 +5343,25 @@ class PlaybackService : MediaLibraryService() {
             )
             if (!settled) NerdStats.onLosslessRaceEnd(videoId)
             return Resolved.Module(quick)
+        }
+
+        // When strict lossless mode is active, reject falling back to lossy Opus
+        if (AppSettings.strictLosslessOnly.value) {
+            val candidate = if (lookup.isActive) {
+                withTimeoutOrNull(2500) { lookup.await() }
+            } else {
+                null
+            }
+            if (candidate != null && (candidate.format.isLossless == true || candidate.format.isDolbyAtmos)) {
+                fallback.cancel()
+                NerdStats.onLosslessRaceEnd(videoId)
+                return Resolved.Module(candidate)
+            }
+            fallback.cancel()
+            NerdStats.onLosslessRaceEnd(videoId)
+            throw StreamResolver.PermanentlyUnplayableException(
+                "Skipped '${target.title}': No Lossless or Dolby Atmos stream found (Strict Mode)"
+            )
         }
 
         val url = fallback.await().getOrThrow()

@@ -455,6 +455,9 @@ object AppSettings {
     /** Tries Spotify before Apple Music and the other animated-art providers. */
     val prioritizeSpotifyCanvas = MutableStateFlow(false)
 
+    /** Only plays Dolby Atmos or Lossless FLAC/ALAC masters; never falls back to lossy Opus. */
+    val strictLosslessOnly = MutableStateFlow(false)
+
     /**
      * Secondary artist art: a user-hosted artist-signature API used only when
      * Apple Music has no title logo. Blank URL means unconfigured and the
@@ -882,6 +885,7 @@ object AppSettings {
         canvasOverCellular.value = prefs.getBoolean(KEY_CANVAS_OVER_CELLULAR, false)
         spotifyCanvasAutoHide.value = prefs.getBoolean(KEY_SPOTIFY_CANVAS_AUTO_HIDE, true)
         prioritizeSpotifyCanvas.value = prefs.getBoolean(KEY_PRIORITIZE_SPOTIFY_CANVAS, false)
+        strictLosslessOnly.value = prefs.getBoolean(KEY_STRICT_LOSSLESS_ONLY, false)
         signatureApiEnabled.value = prefs.getBoolean(KEY_SIGNATURE_API_ENABLED, false)
         signatureApiUrl.value = normalizeSignatureApiUrl(prefs.getString(KEY_SIGNATURE_API_URL, "").orEmpty())
         fullBleedArtwork.value = prefs.getBoolean(KEY_FULL_BLEED_ARTWORK, true)
@@ -1445,6 +1449,11 @@ object AppSettings {
     fun setPrioritizeSpotifyCanvas(value: Boolean) {
         prioritizeSpotifyCanvas.value = value
         prefs.edit().putBoolean(KEY_PRIORITIZE_SPOTIFY_CANVAS, value).apply()
+    }
+
+    fun setStrictLosslessOnly(value: Boolean) {
+        strictLosslessOnly.value = value
+        prefs.edit().putBoolean(KEY_STRICT_LOSSLESS_ONLY, value).apply()
     }
 
     fun setSignatureApiEnabled(value: Boolean) {
@@ -2039,6 +2048,7 @@ object AppSettings {
     private const val KEY_CANVAS_OVER_CELLULAR = "canvas_over_cellular"
     private const val KEY_SPOTIFY_CANVAS_AUTO_HIDE = "spotify_canvas_auto_hide"
     private const val KEY_PRIORITIZE_SPOTIFY_CANVAS = "prioritize_spotify_canvas"
+    private const val KEY_STRICT_LOSSLESS_ONLY = "strict_lossless_only"
     private const val KEY_SIGNATURE_API_ENABLED = "signature_api_enabled"
     private const val KEY_SIGNATURE_API_URL = "signature_api_url"
     private const val KEY_FULL_BLEED_ARTWORK = "full_bleed_artwork"
