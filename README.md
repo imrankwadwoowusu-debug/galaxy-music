@@ -141,6 +141,14 @@ BitChord TV is optimized for Android TV and Fire TV devices with Leanback naviga
 - **Zero-Configuration Lossless Audio:** Prebuilt integration with lossless providers (Lossless Bridge, Qobuz, Deezer) out-of-the-box.
 - **Smart Video-to-Audio Drift Compensation:** Automatic handling of video intro/outro duration drift (up to 90 seconds) for music videos such as Rihanna's *Diamonds* and Justin Bieber's *Love Yourself*.
 - **Sub-15ms Cold-Load Home Feed:** Instant disk caching for all Home feed rows.
+- **Targeted Architecture Builds:**
+  - **BitChord TV (`BitChordTV-*.apk`):**
+    - `arm64-v8a`: 64-bit Android TVs and streaming boxes (NVIDIA Shield, NVIDIA Shield Pro, Sony Bravia 4K).
+    - `armeabi-v7a`: 32-bit Android TVs and streaming sticks (Amazon Fire TV Stick 4K / Max, Google TV TCL, Chromecast with Google TV).
+    - `universal`: Universal TV build compatible with any Android TV hardware.
+  - **BitChord Mobile (`BitChord-App-*.apk`):**
+    - `arm64-v8a`: Modern 64-bit Android smartphones and tablets (Samsung Galaxy S23, Google Pixel, OnePlus).
+    - `universal`: Universal mobile build compatible with any Android phone or tablet.
 - Detailed architecture and resolution notes are documented in [ISSUES.md](ISSUES.md).
 
 </div>
