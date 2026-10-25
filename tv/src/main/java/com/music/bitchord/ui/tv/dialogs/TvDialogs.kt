@@ -1203,8 +1203,13 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
     val listenBrainzToken by AppSettings.listenBrainzToken.collectAsState()
     val listenBrainzPrimaryArtistOnly by AppSettings.listenBrainzPrimaryArtistOnly.collectAsState()
 
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
     var view by remember { mutableStateOf(TvScrobbleView.OVERVIEW) }
     BackHandler(enabled = view != TvScrobbleView.OVERVIEW) {
+        keyboardController?.hide()
+        focusManager.clearFocus()
         view = TvScrobbleView.OVERVIEW
     }
 
@@ -1213,7 +1218,11 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
             TvDialog(
                 title = "Scrobbling",
                 message = "Connect your scrobbler accounts to track plays on your TV.",
-                onDismissRequest = onDismiss,
+                onDismissRequest = {
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                    onDismiss()
+                },
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     TvListRow(
@@ -1278,6 +1287,8 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
                                     AppSettings.setLastfmEnabled(true)
                                     AppSettings.setLastfmScrobbleEnabled(true)
                                     AppSettings.setLastfmNowPlaying(true)
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
                                     view = TvScrobbleView.OVERVIEW
                                 }
                                 .onFailure { e ->
@@ -1305,6 +1316,8 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
                     AppSettings.setLastfmEnabled(true)
                     AppSettings.setLastfmScrobbleEnabled(true)
                     AppSettings.setLastfmNowPlaying(true)
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
                     view = TvScrobbleView.OVERVIEW
                 }
             }
@@ -1312,7 +1325,11 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
             TvDialog(
                 title = "Last.fm Sign In",
                 message = if (useSessionKey) "Enter your Last.fm username and Session Key." else "Sign in with your Last.fm account.",
-                onDismissRequest = { view = TvScrobbleView.OVERVIEW },
+                onDismissRequest = {
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                    view = TvScrobbleView.OVERVIEW
+                },
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     TvTextField(
@@ -1320,7 +1337,9 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
                         onValueChange = { username = it; errorMessage = null },
                         placeholder = "Username",
                         imeAction = ImeAction.Next,
-                        modifier = Modifier.tvInitialFocus(),
+                        onImeAction = {
+                            focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+                        },
                     )
                     if (useSessionKey) {
                         TvTextField(
@@ -1328,7 +1347,15 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
                             onValueChange = { sessionKey = it; errorMessage = null },
                             placeholder = "Session Key (sk)",
                             imeAction = if (showApiKeys) ImeAction.Next else ImeAction.Done,
-                            onImeAction = performSessionKeyConnect,
+                            onImeAction = {
+                                if (showApiKeys) {
+                                    focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+                                } else {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                    performSessionKeyConnect()
+                                }
+                            },
                         )
                     } else {
                         TvTextField(
@@ -1337,7 +1364,15 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
                             placeholder = "Password",
                             visualTransformation = PasswordVisualTransformation(),
                             imeAction = if (showApiKeys) ImeAction.Next else ImeAction.Done,
-                            onImeAction = performLogin,
+                            onImeAction = {
+                                if (showApiKeys) {
+                                    focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+                                } else {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                    performLogin()
+                                }
+                            },
                         )
                     }
                     if (showApiKeys) {
@@ -1346,6 +1381,9 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
                             onValueChange = { apiKeyInput = it; errorMessage = null },
                             placeholder = "API Key (32 hex characters)",
                             imeAction = ImeAction.Next,
+                            onImeAction = {
+                                focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+                            },
                         )
                         TvTextField(
                             value = secretInput,
@@ -1353,7 +1391,11 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
                             placeholder = "Shared Secret",
                             visualTransformation = PasswordVisualTransformation(),
                             imeAction = ImeAction.Done,
-                            onImeAction = if (useSessionKey) performSessionKeyConnect else performLogin,
+                            onImeAction = {
+                                keyboardController?.hide()
+                                focusManager.clearFocus()
+                                if (useSessionKey) performSessionKeyConnect() else performLogin()
+                            },
                         )
                     }
                     if (errorMessage != null) {
@@ -1402,7 +1444,12 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
                 TvDialogButton(
                     text = "Cancel",
                     enabled = !isLoading,
-                    onClick = { view = TvScrobbleView.OVERVIEW },
+                    initialFocus = true,
+                    onClick = {
+                        keyboardController?.hide()
+                        focusManager.clearFocus()
+                        view = TvScrobbleView.OVERVIEW
+                    },
                 )
             }
         }
@@ -1410,7 +1457,11 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
             TvDialog(
                 title = "Last.fm",
                 message = "Signed in as $lastfmUser",
-                onDismissRequest = { view = TvScrobbleView.OVERVIEW },
+                onDismissRequest = {
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                    view = TvScrobbleView.OVERVIEW
+                },
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     TvListRow(
@@ -1446,15 +1497,20 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
             TvDialog(
                 title = "ListenBrainz",
                 message = "Enter your user token from listenbrainz.org/profile to enable scrobbling.",
-                onDismissRequest = { view = TvScrobbleView.OVERVIEW },
+                onDismissRequest = {
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                    view = TvScrobbleView.OVERVIEW
+                },
             ) {
                 TvTextField(
                     value = token,
                     onValueChange = { token = it },
                     placeholder = "User Token",
                     imeAction = ImeAction.Done,
-                    modifier = Modifier.tvInitialFocus(),
                     onImeAction = {
+                        keyboardController?.hide()
+                        focusManager.clearFocus()
                         if (token.isNotBlank()) {
                             AppSettings.setListenBrainzToken(token.trim())
                             AppSettings.setListenBrainzEnabled(true)
@@ -1467,13 +1523,23 @@ fun TvScrobbleDialog(onDismiss: () -> Unit) {
                     text = "Connect",
                     enabled = token.isNotBlank(),
                     onClick = {
+                        keyboardController?.hide()
+                        focusManager.clearFocus()
                         AppSettings.setListenBrainzToken(token.trim())
                         AppSettings.setListenBrainzEnabled(true)
                         view = TvScrobbleView.OVERVIEW
                     },
                 )
                 Spacer(modifier = Modifier.height(6.dp))
-                TvDialogButton(text = "Cancel", onClick = { view = TvScrobbleView.OVERVIEW })
+                TvDialogButton(
+                    text = "Cancel",
+                    initialFocus = true,
+                    onClick = {
+                        keyboardController?.hide()
+                        focusManager.clearFocus()
+                        view = TvScrobbleView.OVERVIEW
+                    },
+                )
             }
         }
         TvScrobbleView.LISTENBRAINZ_MANAGE -> {
