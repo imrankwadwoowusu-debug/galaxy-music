@@ -140,7 +140,15 @@ object SourceRegistry {
         // Seeded rather than persisted-on-first-write, so a build adding a new
         // built-in kind picks it up for existing installs too. SourceConfig's
         // default is the policy: JioSaavn off, YouTube on.
-        val withPrebaked = PREBAKED_SOURCES.filter { pre -> stored.none { it.id == pre.id || it.baseUrl == pre.baseUrl } } + stored
+        val updatedStored = stored.map { s ->
+            val match = PREBAKED_SOURCES.firstOrNull { it.id == s.id }
+            if (match != null && match.baseUrl != s.baseUrl) {
+                s.copy(baseUrl = match.baseUrl, label = match.label)
+            } else {
+                s
+            }
+        }
+        val withPrebaked = PREBAKED_SOURCES.filter { pre -> updatedStored.none { it.id == pre.id || it.baseUrl == pre.baseUrl } } + updatedStored
         val seeded = withPrebaked + BUILT_IN_KINDS
             .filter { kind -> withPrebaked.none { it.kind == kind } }
             .map { SourceConfig(kind = it) }
@@ -504,6 +512,24 @@ object SourceRegistry {
 
     val PREBAKED_SOURCES = listOf(
         SourceConfig(
+            id = "gg.gglos.addon",
+            kind = SourceKind.ADDON,
+            label = "GGLOS (Lossless)",
+            baseUrl = "https://gglos.geisselgottes.cfd/manifest.json",
+            enabled = true,
+            allowDownloads = true,
+            checkValidLossless = false,
+        ),
+        SourceConfig(
+            id = "eljohnzc.addon.music",
+            kind = SourceKind.ADDON,
+            label = "Eljohnzc Addon (Hi-Res)",
+            baseUrl = "https://eljohnzcaddon.velixir.run/c57e7b0ef2031b2f1fcd/manifest.json",
+            enabled = true,
+            allowDownloads = true,
+            checkValidLossless = false,
+        ),
+        SourceConfig(
             id = "app.bitchord.lossless-bridge",
             kind = SourceKind.ADDON,
             label = "Lossless Bridge",
@@ -542,9 +568,9 @@ object SourceRegistry {
         SourceConfig(
             id = "gglos.ggottes",
             kind = SourceKind.ADDON,
-            label = "GGLOS",
+            label = "GGLOS (Backup)",
             baseUrl = "https://gglos.ggottes.deno.net/manifest.json",
-            enabled = true,
+            enabled = false,
             allowDownloads = true,
             checkValidLossless = false,
         ),
@@ -553,7 +579,7 @@ object SourceRegistry {
             kind = SourceKind.ADDON,
             label = "GGLOS S1",
             baseUrl = "https://gglos.ggottes.deno.net/s1/manifest.json",
-            enabled = true,
+            enabled = false,
             allowDownloads = true,
             checkValidLossless = false,
         ),
@@ -562,20 +588,15 @@ object SourceRegistry {
             kind = SourceKind.ADDON,
             label = "GGLOS S2",
             baseUrl = "https://gglos.ggottes.deno.net/s2/manifest.json",
-            enabled = true,
-            allowDownloads = true,
-            checkValidLossless = false,
-        ),
-        SourceConfig(
-            id = "eljohnzc.addon.music",
-            kind = SourceKind.ADDON,
-            label = "Eljohnzc Addon",
-            baseUrl = "https://eljohnzc-addon.de.deplexo.com/4433c7caff7fd070309e/manifest.json",
-            enabled = true,
+            enabled = false,
             allowDownloads = true,
             checkValidLossless = false,
         ),
     )
+
+    fun resetToPrebaked() {
+        publish(PREBAKED_SOURCES + BUILT_IN_KINDS.map { SourceConfig(kind = it) })
+    }
 
     private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.YOUTUBE)
 

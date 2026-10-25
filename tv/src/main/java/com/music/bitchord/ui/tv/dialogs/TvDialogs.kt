@@ -1,5 +1,9 @@
 package com.music.bitchord.ui.tv.dialogs
 
+import com.music.bitchord.data.sources.SourceRegistry
+import com.music.bitchord.data.sources.SourceKind
+import com.music.bitchord.data.sources.SourceConfig
+
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -1346,5 +1350,136 @@ fun TvLyricsSourcesDialog(onDismiss: () -> Unit) {
         TvDialogButton(text = "Reset to Default", onClick = AppSettings::resetLyricsSourceSettings)
         Spacer(modifier = Modifier.height(6.dp))
         TvDialogButton(text = "Done", onClick = onDismiss)
+    }
+}
+
+
+@Composable
+fun TvLosslessAddonsDialog(onDismiss: () -> Unit) {
+    val configs by SourceRegistry.configs.collectAsState()
+    val addons = remember(configs) { configs.filter { it.kind == SourceKind.ADDON } }
+    val scope = rememberCoroutineScope()
+    var isAdding by remember { mutableStateOf(false) }
+    var inputUrl by remember { mutableStateOf("") }
+    var inputError by remember { mutableStateOf<String?>(null) }
+    var isChecking by remember { mutableStateOf(false) }
+
+    TvDialog(
+        title = "Lossless Addons",
+        message = if (isAdding) "Enter the addon manifest.json URL."
+                  else "Select an addon to turn it on or off. Press Left or Right to move it up or down; #1 is queried first.",
+        width = 540.dp,
+        onDismissRequest = onDismiss,
+    ) {
+        if (isAdding) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                TvTextField(
+                    value = inputUrl,
+                    onValueChange = { inputUrl = it; inputError = null },
+                    placeholder = "https://example.com/manifest.json",
+                    modifier = Modifier.fillMaxWidth(),
+                    onImeAction = {
+                        if (inputUrl.isNotBlank() && !isChecking) {
+                            isChecking = true
+                            scope.launch {
+                                val res = SourceRegistry.identify(inputUrl.trim())
+                                isChecking = false
+                                res.onSuccess { config ->
+                                    SourceRegistry.add(config)
+                                    inputUrl = ""
+                                    isAdding = false
+                                }.onFailure { err ->
+                                    inputError = err.message ?: "Failed to reach addon manifest"
+                                }
+                            }
+                        }
+                    },
+                )
+                if (inputError != null) {
+                    Text(
+                        text = inputError!!,
+                        style = TvType.Caption,
+                        color = Color(0xFFFF5468),
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TvDialogButton(
+                        text = if (isChecking) "Checking..." else "Add Addon",
+                        onClick = {
+                            if (inputUrl.isNotBlank() && !isChecking) {
+                                isChecking = true
+                                scope.launch {
+                                    val res = SourceRegistry.identify(inputUrl.trim())
+                                    isChecking = false
+                                    res.onSuccess { config ->
+                                        SourceRegistry.add(config)
+                                        inputUrl = ""
+                                        isAdding = false
+                                    }.onFailure { err ->
+                                        inputError = err.message ?: "Failed to reach addon manifest"
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                    TvDialogButton(
+                        text = "Cancel",
+                        onClick = { isAdding = false; inputError = null },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 320.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                itemsIndexed(addons, key = { _, addon -> addon.id }) { index, addon ->
+                    val checked = addon.enabled
+                    TvListRow(
+                        title = addon.displayName,
+                        subtitle = addon.baseUrl,
+                        value = "#${index + 1}",
+                        leadingIcon = if (checked) Icons.Rounded.Check else null,
+                        modifier = Modifier
+                            .tvInitialFocus(enabled = index == 0)
+                            .onKeyEvent { event ->
+                                if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                                val target = when (event.nativeKeyEvent.keyCode) {
+                                    KeyEvent.KEYCODE_DPAD_LEFT -> index - 1
+                                    KeyEvent.KEYCODE_DPAD_RIGHT -> index + 1
+                                    else -> return@onKeyEvent false
+                                }
+                                if (target in addons.indices) {
+                                    val reordered = addons.map { it.id }.toMutableList().apply {
+                                        add(target, removeAt(index))
+                                    }
+                                    SourceRegistry.reorderAddons(reordered)
+                                }
+                                true
+                            },
+                        onClick = {
+                            SourceRegistry.setEnabled(addon.id, !checked)
+                        },
+                    )
+                }
+                item(key = "add_custom_btn") {
+                    TvListRow(
+                        title = "Add Custom Addon URL...",
+                        subtitle = "Paste or enter a new manifest.json URL",
+                        leadingIcon = Icons.Rounded.Add,
+                        onClick = { isAdding = true },
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+            TvDialogButton(text = "Reset to Recommended", onClick = SourceRegistry::resetToPrebaked)
+            Spacer(modifier = Modifier.height(6.dp))
+            TvDialogButton(text = "Done", onClick = onDismiss)
+        }
     }
 }

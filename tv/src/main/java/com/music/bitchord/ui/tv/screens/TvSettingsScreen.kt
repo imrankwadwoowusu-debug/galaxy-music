@@ -36,6 +36,9 @@ import com.music.bitchord.ui.tv.audio.TvSpatialAudioEngine
 import com.music.bitchord.ui.tv.components.TvChromePinned
 import com.music.bitchord.ui.tv.components.TvListHeader
 import com.music.bitchord.ui.tv.components.TvListRow
+import com.music.bitchord.data.sources.SourceRegistry
+import com.music.bitchord.data.sources.SourceKind
+import com.music.bitchord.ui.tv.dialogs.TvLosslessAddonsDialog
 import com.music.bitchord.ui.tv.dialogs.TvAboutDialog
 import com.music.bitchord.ui.tv.dialogs.TvEqualizerDialog
 import com.music.bitchord.ui.tv.dialogs.TvLyricsSourcesDialog
@@ -50,7 +53,7 @@ import com.music.bitchord.ui.tv.theme.TvGlass
 import com.music.bitchord.ui.tv.theme.TvType
 
 // Discord Rich Presence is hidden on TV for now; TvDiscordDialog is kept for when it returns.
-private enum class SettingsSheet { Theme, RefreshRate, Equalizer, Scrobbling, LyricsSources, Update, About }
+private enum class SettingsSheet { Theme, RefreshRate, Equalizer, Scrobbling, LyricsSources, LosslessAddons, Update, About }
 
 private const val DefaultBlurb = "Playback, sound and display preferences for BitChord on this TV."
 
@@ -92,6 +95,8 @@ fun TvSettingsScreen(
     var blurb by remember { mutableStateOf(DefaultBlurb) }
     var sheet by remember { mutableStateOf<SettingsSheet?>(null) }
     val update by AppUpdateChecker.available.collectAsState()
+    val sourceConfigs by SourceRegistry.configs.collectAsState()
+    val activeAddons = remember(sourceConfigs) { sourceConfigs.count { it.kind == SourceKind.ADDON && it.enabled } }
 
     Row(
         modifier = modifier
@@ -217,6 +222,16 @@ fun TvSettingsScreen(
                     value = onOff(usbDac),
                     onFocused = { blurb = "Sends audio straight to a connected USB DAC, unchanged, when one is attached." },
                     onClick = { AppSettings.setPreferUsbDac(!usbDac) },
+                )
+            }
+
+            item { TvListHeader("Lossless & Sources") }
+            item {
+                TvListRow(
+                    title = "Lossless Addons",
+                    value = "$activeAddons Active",
+                    onFocused = { blurb = "Select to turn addons on or off, reorder priority with D-pad, or add custom lossless sources." },
+                    onClick = { sheet = SettingsSheet.LosslessAddons },
                 )
             }
 
@@ -352,6 +367,7 @@ fun TvSettingsScreen(
         SettingsSheet.Equalizer -> TvEqualizerDialog(onDismiss = { sheet = null })
         SettingsSheet.Scrobbling -> TvScrobbleDialog(onDismiss = { sheet = null })
         SettingsSheet.LyricsSources -> TvLyricsSourcesDialog(onDismiss = { sheet = null })
+        SettingsSheet.LosslessAddons -> TvLosslessAddonsDialog(onDismiss = { sheet = null })
         SettingsSheet.Update -> update?.let { TvUpdateDialog(update = it, onDismiss = { sheet = null }) }
         SettingsSheet.About -> TvAboutDialog(onDismiss = { sheet = null })
         null -> Unit
