@@ -1,6 +1,7 @@
 package com.music.bitchord
 
 import com.music.bitchord.data.debrid.CacheNames
+import com.music.bitchord.data.debrid.DebridCache
 import com.music.bitchord.data.sources.DebridSource
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
@@ -46,6 +47,49 @@ class DebridSourceTest {
             .encodeToString("42\n7\n".toByteArray())))
         // The old catalogue-id shape is not a valid address any more.
         assertNull(DebridSource.parseTrackId("tbaGk="))
+    }
+
+    @Test fun `global track ids round-trip the hash position and name`() {
+        val fileName = "Monkeys Spinning Monkeys - Kevin MacLeod [RedLake 359051850 - Hi-Res].flac"
+        val id = DebridSource.encodeGlobalTrackId("AABBCCDD", 3, fileName)
+        assertTrue(":" !in id)
+        assertTrue(id.startsWith("rg"))
+        val parsed = DebridSource.parseGlobalTrackId(id)!!
+        assertEquals("aabbccdd", parsed.hash)
+        assertEquals(3, parsed.fileIndex)
+        assertEquals(fileName, parsed.fileName)
+    }
+
+    @Test fun `global track ids refuse malformed payloads`() {
+        assertNull(DebridSource.parseGlobalTrackId("aabbccdd"))
+        assertNull(DebridSource.parseGlobalTrackId("rg!!!not-base64!!!"))
+        assertNull(DebridSource.parseGlobalTrackId("rg" + java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString("\n3\nSong - Artist [RedLake 1 - Hi-Res].flac".toByteArray())))
+        assertNull(DebridSource.parseGlobalTrackId("rg" + java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString("aabb\n-1\nSong - Artist [RedLake 1 - Hi-Res].flac".toByteArray())))
+        assertNull(DebridSource.parseGlobalTrackId("rg" + java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString("aabb\n3\n".toByteArray())))
+    }
+
+    @Test fun `only public http sources can be cached by the provider`() {
+        assertTrue(DebridCache.isPublicHttpUrl("https://files.example.com/track.flac"))
+        assertTrue(DebridCache.isPublicHttpUrl("http://172.32.0.1/track.flac"))
+        assertFalse(DebridCache.isPublicHttpUrl("http://127.0.0.1/track.flac"))
+        assertFalse(DebridCache.isPublicHttpUrl("http://192.168.1.4/track.flac"))
+        assertFalse(DebridCache.isPublicHttpUrl("http://10.0.0.2/track.flac"))
+        assertFalse(DebridCache.isPublicHttpUrl("http://172.20.0.1/track.flac"))
+        assertFalse(DebridCache.isPublicHttpUrl("http://localhost/track.flac"))
+        assertFalse(DebridCache.isPublicHttpUrl("http://[::1]/track.flac"))
+        assertFalse(DebridCache.isPublicHttpUrl("http://[fe80::1]/track.flac"))
+        assertFalse(DebridCache.isPublicHttpUrl("https://user:secret@files.example.com/track.flac"))
+        assertFalse(DebridCache.isPublicHttpUrl("ftp://files.example.com/track.flac"))
+        assertFalse(DebridCache.isPublicHttpUrl("not a url"))
+    }
+
+    @Test fun `manifests are not files a provider can keep`() {
+        assertTrue(DebridCache.isManifestUrl("https://example.com/stream.m3u8?token=x"))
+        assertTrue(DebridCache.isManifestUrl("https://example.com/manifest.mpd#t=1"))
+        assertFalse(DebridCache.isManifestUrl("https://example.com/track.flac"))
     }
 
     @Test fun `lossless asks for flac and alac only`() {

@@ -175,6 +175,7 @@ import com.music.bitchord.ui.screens.PartyServerEditor
 import com.music.bitchord.ui.screens.SignatureApiEditor
 import com.music.bitchord.ui.screens.SettingsScreen
 import com.music.bitchord.ui.components.DebridEditorAlert
+import com.music.bitchord.data.debrid.DebridCache
 import com.music.bitchord.ui.screens.SourceEditorAlert
 import com.music.bitchord.ui.screens.SourcesScreen
 import com.music.bitchord.data.sources.TrackMatcher
@@ -4230,6 +4231,15 @@ private fun BitChordApp(
                             songActions = null
                             uploadToWebDav(listOf(song))
                         }
+                    } else {
+                        null
+                    },
+                // Provider-side copy of a file that already exists somewhere
+                // public. Stays open, like the download row: the row reports
+                // queued, running and then the provider's answer.
+                onCacheToDebrid =
+                    if (AppSettings.debridApiKey.value.isNotBlank() && DebridCache.canCache(song)) {
+                        { DebridCache.cacheSong(song) }
                     } else {
                         null
                     },

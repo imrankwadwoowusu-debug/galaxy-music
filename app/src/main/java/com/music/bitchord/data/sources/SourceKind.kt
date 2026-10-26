@@ -138,18 +138,20 @@ enum class SourceKind(
     ),
 
     /**
-     * Cached torrents through the listener's own debrid account,
-     * today, further providers behind the same row tomorrow.
+     * Cached torrents through the listener's debrid account — today TorBox,
+     * further providers behind the same row tomorrow.
      *
-     * The account's own library is the index: its RedLake file names are read
+     * The account's library is the base index: its RedLake file names are read
      * back into title, artist and tier, and a match is bit-exact audio the
-     * service never has to stream itself. No public catalogue is consulted.
-     * Needs an API key, entered on the row's editor, so it seeds off like
-     * JioSaavn until one is given.
+     * service never has to stream itself. The provider's global cache is an
+     * optional second index, and a global row is added to the account only
+     * when it is played. No music service is consulted. Needs an API key,
+     * entered on the row's editor, so it seeds off like JioSaavn until one is
+     * given.
      */
     DEBRID(
         label = "Debrid",
-        detail = "Bit-exact audio from your debrid library. Needs an API key and RedLake files.",
+        detail = "Bit-exact RedLake audio from your debrid account and its global cache. Needs an API key.",
         labels = listOf("Lossless", "Atmos", "RedLake"),
         needsServer = false,
         canServeLossless = true,

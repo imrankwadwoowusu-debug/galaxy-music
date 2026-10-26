@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -340,6 +341,12 @@ fun ServerEditorAlert(
     removeLabel: String? = null,
     /** Offered only when there is something stored to remove. */
     onRemove: (() -> Unit)? = null,
+    /**
+     * Extra settings drawn under the fields, inside the same card. The debrid
+     * editor uses it for its catalogue switches; every other editor leaves it
+     * absent and looks exactly as before.
+     */
+    extras: (@Composable () -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     AlertScaffold(hazeState = hazeState, onDismiss = { if (!testing) onDismiss() }) {
@@ -382,6 +389,10 @@ fun ServerEditorAlert(
                         onDone = { if (canSubmit && !testing) onSave() },
                     ),
                 )
+            }
+            if (extras != null) {
+                Spacer(Modifier.height(12.dp))
+                extras()
             }
         }
         AlertRule()
@@ -871,6 +882,8 @@ fun DebridEditorAlert(
     scope: kotlinx.coroutines.CoroutineScope,
 ) {
     var apiKey by remember { mutableStateOf(AppSettings.debridApiKey.value) }
+    var globalSearch by remember { mutableStateOf(AppSettings.debridGlobalSearch.value) }
+    var autoCache by remember { mutableStateOf(AppSettings.debridAutoCache.value) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var statusIsGood by remember { mutableStateOf(false) }
@@ -911,6 +924,8 @@ fun DebridEditorAlert(
 
             if (thenSave) {
                 AppSettings.setDebridApiKey(key)
+                AppSettings.setDebridGlobalSearch(globalSearch)
+                AppSettings.setDebridAutoCache(autoCache)
                 com.music.bitchord.data.debrid.DebridApi.invalidateLibrary()
                 com.music.bitchord.data.sources.SourceRegistry.setEnabled(config.id, true)
                 onSaved()
@@ -937,6 +952,22 @@ fun DebridEditorAlert(
         canSubmit = apiKey.isNotBlank(),
         onTest = { run(thenSave = false) },
         onSave = { run(thenSave = true) },
+        extras = {
+            DebridSetting(
+                title = stringResource(R.string.debrid_global_search),
+                summary = stringResource(R.string.debrid_global_search_summary),
+                checked = globalSearch,
+                onCheckedChange = { globalSearch = it },
+                enabled = !busy,
+            )
+            DebridSetting(
+                title = stringResource(R.string.debrid_auto_cache),
+                summary = stringResource(R.string.debrid_auto_cache_summary),
+                checked = autoCache,
+                onCheckedChange = { autoCache = it },
+                enabled = !busy,
+            )
+        },
         removeLabel = stringResource(R.string.debrid_clear_key),
         onRemove = if (AppSettings.debridApiKey.value.isBlank()) null else ({
             AppSettings.setDebridApiKey("")
@@ -945,4 +976,40 @@ fun DebridEditorAlert(
         }),
         onDismiss = onDismiss,
     )
+}
+
+/** One labelled switch in the debrid editor's extra settings. */
+@Composable
+private fun DebridSetting(
+    title: String,
+    summary: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+        )
+    }
 }

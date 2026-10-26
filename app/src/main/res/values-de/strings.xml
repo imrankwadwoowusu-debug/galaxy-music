@@ -1239,7 +1239,7 @@
 
 
     <string name="debrid_editor_title">Debrid</string>
-    <string name="debrid_editor_subtitle">Bit-exact cached audio via your debrid account</string>
+    <string name="debrid_editor_subtitle">Bit-exact RedLake audio through your debrid account</string>
     <string name="debrid_api_key">Debrid API key</string>
     <string name="debrid_api_key_required">Debrid API key required</string>
     <string name="debrid_key_hint">Paste your Debrid API key</string>
@@ -1255,6 +1255,13 @@
 
 
 
+    <string name="debrid_global_search">Search global cache</string>
+    <string name="debrid_global_search_summary">Include cached releases outside your account. A release is added to your account only when you play it.</string>
+    <string name="debrid_auto_cache">Auto-cache addon streams</string>
+    <string name="debrid_auto_cache_summary">Add a stream to your debrid account after it starts playing. Torrents are added only when already cached.</string>
+    <string name="cache_to_debrid">Cache to Debrid</string>
+    <string name="caching_to_debrid">Caching to Debrid…</string>
+    <string name="cached_to_debrid">Cached to Debrid</string>
     <string name="source_needs_lossless_output">Braucht eine verlustfreie Ausgabe · nutze ein Gerät, das Lossless unterstützt</string>
     <string name="source_needs_lossless_bt_codec">Braucht eine verlustfreie Ausgabe · Bluetooth nutzt %1$s; nutze ein Gerät, das Lossless unterstützt</string>
     <string name="source_needs_lossless_bt_unknown">Braucht eine verlustfreie Ausgabe · der Bluetooth-Codec ist nicht erkennbar</string>

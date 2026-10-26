@@ -1165,7 +1165,7 @@
     <string name="prioritize_spotify_canvas_subtitle">Thử Spotify trước Apple Music và các nhà cung cấp ảnh bìa động khác</string>
 
     <string name="debrid_editor_title">Debrid</string>
-    <string name="debrid_editor_subtitle">Âm thanh gốc từ bộ nhớ đệm qua tài khoản debrid của bạn</string>
+    <string name="debrid_editor_subtitle">Âm thanh RedLake gốc qua tài khoản debrid của bạn</string>
     <string name="debrid_api_key">Khóa API debrid</string>
     <string name="debrid_api_key_required">Cần có khóa API debrid</string>
     <string name="debrid_key_hint">Dán khóa API debrid của bạn</string>
@@ -1174,6 +1174,13 @@
     <string name="debrid_rejected">Khóa này đã bị từ chối</string>
     <string name="debrid_clear_key">Xóa khóa</string>
 
+    <string name="debrid_global_search">Tìm trong bộ nhớ đệm toàn cầu</string>
+    <string name="debrid_global_search_summary">Bao gồm các bản phát hành đã lưu ngoài tài khoản của bạn. Bản phát hành chỉ được thêm vào tài khoản khi bạn phát.</string>
+    <string name="debrid_auto_cache">Tự động lưu luồng addon</string>
+    <string name="debrid_auto_cache_summary">Thêm luồng vào tài khoản debrid sau khi bắt đầu phát. Chỉ thêm torrent khi đã có trong bộ nhớ đệm.</string>
+    <string name="cache_to_debrid">Lưu vào Debrid</string>
+    <string name="caching_to_debrid">Đang lưu vào Debrid…</string>
+    <string name="cached_to_debrid">Đã lưu vào Debrid</string>
     <string name="source_needs_lossless_output">Cần đầu ra lossless · hãy dùng thiết bị hỗ trợ lossless</string>
     <string name="source_needs_lossless_bt_codec">Cần đầu ra lossless · Bluetooth đang dùng %1$s; hãy dùng thiết bị hỗ trợ lossless</string>
     <string name="source_needs_lossless_bt_unknown">Cần đầu ra lossless · không xác định được codec Bluetooth đang dùng</string>

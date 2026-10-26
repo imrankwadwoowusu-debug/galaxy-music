@@ -605,6 +605,25 @@ object AppSettings {
      */
     val debridApiKey = MutableStateFlow("")
 
+    /**
+     * Also search the provider's global cache, not only the account's own
+     * torrents. On by default: the account remains the library, and the global
+     * cache is an extra catalogue of files the listener could add in one tap.
+     * Switching it off leaves every request on the account alone.
+     */
+    val debridGlobalSearch = MutableStateFlow(true)
+
+    /**
+     * Add an addon stream to the debrid account in the background when it is
+     * played.
+     *
+     * Off by default because it writes to the listener's account without
+     * asking, and a cache that fills itself is a quota surprise. When on, a
+     * torrent stream is added only if the provider already has it cached; a
+     * direct URL becomes a web download.
+     */
+    val debridAutoCache = MutableStateFlow(false)
+
     // ── SMB ───────────────────────────────────────────────────────────────
 
     /**
@@ -941,6 +960,8 @@ object AppSettings {
         webdavUsername.value = prefs.getString(KEY_WEBDAV_USERNAME, "").orEmpty()
         webdavPassword.value = authStore.webdavPassword.orEmpty()
         debridApiKey.value = authStore.debridApiKey.orEmpty()
+        debridGlobalSearch.value = prefs.getBoolean(KEY_DEBRID_GLOBAL_SEARCH, true)
+        debridAutoCache.value = prefs.getBoolean(KEY_DEBRID_AUTO_CACHE, false)
         smbHost.value = prefs.getString(KEY_SMB_HOST, "").orEmpty()
         smbShare.value = prefs.getString(KEY_SMB_SHARE, "").orEmpty()
         smbBasePath.value = prefs.getString(KEY_SMB_BASE_PATH, "").orEmpty()
@@ -1774,6 +1795,16 @@ object AppSettings {
         authStore.debridApiKey = normalized.ifEmpty { null }
     }
 
+    fun setDebridGlobalSearch(value: Boolean) {
+        debridGlobalSearch.value = value
+        prefs.edit().putBoolean(KEY_DEBRID_GLOBAL_SEARCH, value).apply()
+    }
+
+    fun setDebridAutoCache(value: Boolean) {
+        debridAutoCache.value = value
+        prefs.edit().putBoolean(KEY_DEBRID_AUTO_CACHE, value).apply()
+    }
+
     fun clearWebDav() {
         setWebDavUrl("")
         setWebDavUsername("")
@@ -2081,6 +2112,8 @@ object AppSettings {
     private const val KEY_LOCAL_MUSIC_FOLDER_URI = "local_music_folder_uri"
     private const val KEY_WEBDAV_URL = "webdav_url"
     private const val KEY_WEBDAV_USERNAME = "webdav_username"
+    private const val KEY_DEBRID_GLOBAL_SEARCH = "debrid_global_search"
+    private const val KEY_DEBRID_AUTO_CACHE = "debrid_auto_cache"
     private const val KEY_SMB_HOST = "smb_host"
     private const val KEY_SMB_SHARE = "smb_share"
     private const val KEY_SMB_BASE_PATH = "smb_base_path"

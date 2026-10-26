@@ -1,6 +1,7 @@
 package com.music.bitchord.data.sources
 
 import com.music.bitchord.data.TrackLog
+import com.music.bitchord.data.debrid.DebridCache
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.sources.addon.AddonClient
@@ -274,7 +275,17 @@ class AddonSource(
                 return@withContext fromRow(trackId, tier)
             }
 
-            openable(url, answer, trackId, tier).also { stream ->
+            val opened = openable(url, answer, trackId, tier)
+            if (opened != null) {
+                val row = rows[trackId]
+                DebridCache.autoCacheAddonStream(
+                    answer,
+                    title = row?.title,
+                    artist = row?.artist,
+                    format = row?.format,
+                )
+            }
+            opened.also { stream ->
                 if (stereoOnly && stream?.format?.isDolbyAtmos == true) {
                     TrackLog.w(
                         TAG,
@@ -300,7 +311,17 @@ class AddonSource(
         val row = rows[trackId] ?: return null
         val url = row.streamURL?.ifBlank { null } ?: return null
         TrackLog.d(TAG, "${config.displayName}: using the search row's own URL for $trackId")
-        return openable(url, AddonStream(url = url, format = row.format), trackId, tier)
+        val answer = AddonStream(url = url, format = row.format)
+        val opened = openable(url, answer, trackId, tier)
+        if (opened != null) {
+            DebridCache.autoCacheAddonStream(
+                answer,
+                title = row.title,
+                artist = row.artist,
+                format = row.format,
+            )
+        }
+        return opened
     }
 
     /**
