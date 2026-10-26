@@ -223,6 +223,8 @@
     <string name="equalizer_subtitle">แผงควบคุมของระบบในอุปกรณ์ของคุณ</string>
     <string name="show_nerd_stats">แสดงสถิติเชิงลึก</string>
     <string name="show_nerd_stats_subtitle">โคเดก อัตราบิต และอัตราสุ่มตัวอย่างบนหน้าเครื่องเล่น</string>
+    <string name="external_links">เปิดลิงก์จากแอปอื่น</string>
+    <string name="external_links_subtitle">ลิงก์ของ Spotify, Apple Music, Deezer และ SoundCloud จะเล่นที่นี่ โดยค้นหาจาก YouTube Music</string>
     <string name="theme">ธีม</string>
     <string name="reduce_animation">ลดแอนิเมชัน</string>
     <string name="reduce_animation_subtitle">หยุดเกรเดียนต์ของเครื่องเล่นหลักแทนการเคลื่อนไหว</string>

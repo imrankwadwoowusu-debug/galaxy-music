@@ -314,6 +314,8 @@
     <string name="eq_preset_custom">Custom</string>
     <string name="show_nerd_stats">Show stats for nerds</string>
     <string name="show_nerd_stats_subtitle">Codec, bitrate and sample rate on the player</string>
+    <string name="external_links">Open links from other apps</string>
+    <string name="external_links_subtitle">Spotify, Apple Music, Deezer and SoundCloud links play here, matched on YouTube Music</string>
     <string name="app_icon">App icon</string>
     <string name="app_icon_default">Default</string>
     <string name="app_icon_liquid_glass" translatable="false">Liquid Glass</string>

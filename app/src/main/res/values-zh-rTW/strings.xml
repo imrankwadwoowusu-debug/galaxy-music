@@ -202,6 +202,8 @@
     <string name="equalizer_subtitle">裝置的系統面板</string>
     <string name="show_nerd_stats">顯示技術統計資訊</string>
     <string name="show_nerd_stats_subtitle">在播放器上顯示編解碼器、位元率和取樣率</string>
+    <string name="external_links">開啟其他應用程式的連結</string>
+    <string name="external_links_subtitle">Spotify、Apple Music、Deezer 和 SoundCloud 的連結會在此播放，並於 YouTube Music 上比對</string>
     <string name="theme">主題</string>
     <string name="reduce_animation">減少動畫</string>
     <string name="reduce_animation_subtitle">讓主播放器的漸變保持靜止，而不是流動</string>

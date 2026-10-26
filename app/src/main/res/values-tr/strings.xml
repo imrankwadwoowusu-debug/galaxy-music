@@ -229,6 +229,8 @@
     <string name="equalizer_subtitle">Cihazınızın sistem paneli</string>
     <string name="show_nerd_stats">Meraklılar için istatistikleri göster</string>
     <string name="show_nerd_stats_subtitle">Oynatıcıda codec, bit hızı ve örnekleme oranı</string>
+    <string name="external_links">Diğer uygulamaların bağlantılarını aç</string>
+    <string name="external_links_subtitle">Spotify, Apple Music, Deezer ve SoundCloud bağlantıları burada çalar, YouTube Music üzerinden eşleştirilir</string>
     <string name="theme">Tema</string>
     <string name="reduce_animation">Animasyonu azalt</string>
     <string name="reduce_animation_subtitle">Ana oynatıcının gradyanını kaymak yerine dondurur</string>

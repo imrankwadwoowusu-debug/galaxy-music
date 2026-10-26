@@ -208,6 +208,8 @@
     <string name="equalizer_subtitle">Le panneau système de votre appareil</string>
     <string name="show_nerd_stats">Afficher les statistiques techniques</string>
     <string name="show_nerd_stats_subtitle">Codec, débit et fréquence d\'échantillonnage sur le lecteur</string>
+    <string name="external_links">Ouvrir les liens d\'autres applis</string>
+    <string name="external_links_subtitle">Les liens Spotify, Apple Music, Deezer et SoundCloud sont lus ici, retrouvés sur YouTube Music</string>
     <string name="theme">Thème</string>
     <string name="reduce_animation">Réduire les animations</string>
     <string name="reduce_animation_subtitle">Fige le dégradé du lecteur principal au lieu de le faire dériver</string>
