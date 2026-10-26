@@ -47,6 +47,7 @@ class CacheNamesTest {
     @Test fun `a different protocol tag is not a RedLake file`() {
         assertNull(CacheNames.parse("Song - Artist [NullBeat 359051850 - Hi-Res].flac"))
         assertNull(CacheNames.parse("Song - Artist [redlake 359051850 - Hi-Res].flac"))
+        assertNull(CacheNames.parse("Song - Artist [RedLake2 359051850 - Hi-Res].flac"))
     }
 
     @Test fun `a torrent folder prefix and an album track number are filing, not the title`() {

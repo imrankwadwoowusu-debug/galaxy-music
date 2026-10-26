@@ -130,6 +130,9 @@ object CacheNames {
         val base = fileName.substringAfterLast('/').substringAfterLast('\\')
         val open = base.lastIndexOf("[$PROTOCOL_TAG")
         if (open <= 0) return null
+        // The tag is a word, not a prefix: `[RedLake2 …]` is another protocol.
+        val tagEnd = open + 1 + PROTOCOL_TAG.length
+        if (tagEnd >= base.length || !base[tagEnd].isWhitespace()) return null
         val close = base.indexOf(']', open)
         if (close < 0) return null
 
