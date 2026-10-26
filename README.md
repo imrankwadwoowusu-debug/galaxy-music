@@ -51,7 +51,6 @@
 - **Offline downloads** — save tracks with embedded metadata.
 - **Local music library** integration.
 - **Background playback** via a proper foreground media session.
-- **BitChord TV & Android TV** — Leanback interface with lossless audio upgrade support for TV music video playlists (see [ISSUES.md](ISSUES.md)).
 - **Apple-like lyrics animation** — credit to [binimum](https://github.com/binimum/am-lyrics).
 
 #### Connectivity & Accounts
@@ -94,62 +93,6 @@
 
 Grab the latest signed APK from the [Releases](https://github.com/kushagrasinghx/BitChord/releases) page. Sideloading requires enabling "Install unknown apps" for whichever app you download it with.
 
-
-### BitChord TV Fork Enhancements (mandy321/BitChord)
-
-This fork ([mandy321/BitChord](https://github.com/mandy321/BitChord)) adds exclusive features to BitChord TV and the core playback engine that are not available in the upstream release:
-
-#### 1. Live Addon Health Check & Quality Tier Ranking
-- **Concurrent Addon Probing ("Test / Refresh")**: Concurrently pings `/manifest.json` across all configured community and custom addons with a 4-second timeout, immediately displaying reachability, HTTP response codes, and round-trip network latency in milliseconds.
-- **Intelligent Quality Tier Detection**: Inspects manifest headers and categorizes providers into weighted quality ranks:
-  - **Rank 4**: Dolby Atmos / Hi-Res FLAC (Tidal E-AC3 JOC / 24-bit masters)
-  - **Rank 3**: Hi-Res FLAC (24-bit 96–192kHz uncompressed studio masters)
-  - **Rank 2**: Lossless FLAC (16-bit 44.1kHz CD quality)
-  - **Rank 1**: High Quality (320kbps MP3/AAC)
-- **One-Click Auto-Prioritize**: Sorts active addons by quality tier rank first, then by lowest latency (fastest ping first), while pushing rate-limited or offline endpoints to the bottom of the failover chain.
-
-#### 2. Music Video to Studio Lossless Master Upgrade
-- **Autonomous Video-to-Studio Resolution**: Removed the restriction that forced official music videos to play in lossy Opus format. YouTube Music video rows (e.g., `Because Of You (Official HD Video)`) automatically match against community lossless sources and stream the 24-bit uncompressed studio master.
-- **Intro/Outro Duration Slack (90s)**: Accounts for video-exclusive storytelling, spoken dialogue, and end credits while maintaining strict artist, title, and version integrity.
-
-#### 3. Advanced Metadata & Fuzzy Matching Engine
-- **Packaging vs. Identity Separation**: Strips promotional tags (`[Official HD Video]`, `[Lyric Video]`, `(From "OST")`, `Full Song`) while strictly preserving bidirectional version markers (`Remix`, `Live`, `Acoustic`, `Instrumental`).
-- **Unicode & Script Transliteration**: Full NFKC Unicode normalization, case/accent folding, and Hepburn Romaji transliteration for Japanese Kana/Kanji and non-spaced CJK titles.
-- **Composer vs. Vocalist Dual Query**: Resolves Indian film and soundtrack discrepancies where YouTube lists the composer (e.g., *Pritam*) while streaming stores list the vocalist (e.g., *Neeraj Shridhar*), using exact duration corroboration to guarantee master identity.
-
-#### 4. Real-Time Measured Stats for Nerds (Default ON)
-- Direct telemetry read from the ExoPlayer/Media3 hardware sink displaying active codec (`FLAC`, `ALAC`, `Dolby Digital Plus (E-AC3 JOC)`, `Opus`, `AAC`), bit depth (16/24-bit), sample rate (44.1–192 kHz), bit rate (kbps), and serving provider.
-- Differentiates between what the source *claimed* and what the hardware decoder *measured*.
-
-#### 5. Audiophile-Grade Default Configuration
-- **Normalization (Sound Check)**: Renamed to **"Normalization"** in Settings and defaulted to **OFF** to preserve untouched, bit-exact sample playback.
-- **Clean Signal Path**: Automix (OFF), Crossfade (0s), Equalizer (OFF), Spatial Audio (OFF), USB DAC (OFF), Autoplay (ON), Dolby Atmos (ON).
-
-#### 6. Interactive TV Scrobbling (Last.fm & ListenBrainz)
-- **Direct TV Authentication**: Built native Leanback dialogs for signing into Last.fm and ListenBrainz directly on the TV interface.
-- **Last.fm Credentials or Session Key**: Supports standard username/password login (`auth.getMobileSession`) or direct Session Key (`sk`) entry (convenient via Google TV / Fire TV mobile remote apps).
-- **Custom API Key Support**: Expandable drawer to enter or override Last.fm API Key & Secret if running a custom build without environment secrets.
-- **ListenBrainz Token Integration**: Direct input for ListenBrainz user tokens.
-- **Live Account Status & Control**: Displays connected usernames, one-click disconnect, and independent toggles for track scrobbling, "Now Playing" broadcast, and primary artist filtering.
-
-#### 7. Motion Artwork Source Prioritization (Apple Music vs. Spotify Canvas)
-- **Apple Music Motion Art Default**: Prioritizes official, studio-commissioned Apple Music HLS motion covers by default across both TV and mobile.
-- **Interactive Source Switcher**: Added a direct "Motion Art Source" row in TV Settings (`Apple Music` ↔ `Spotify Canvas`) and a quick toggle under Animated Cover Art in Mobile Settings, giving users instant control over their visual playback experience.
-
-### BitChord TV & Lossless Audio Upgrade
-BitChord TV is optimized for Android TV and Fire TV devices with Leanback navigation and autonomous lossless playback:
-- **Zero-Configuration Lossless Audio:** Prebuilt integration with lossless providers (Lossless Bridge, Qobuz, Deezer) out-of-the-box.
-- **Smart Video-to-Audio Drift Compensation:** Automatic handling of video intro/outro duration drift (up to 90 seconds) for music videos such as Rihanna's *Diamonds* and Justin Bieber's *Love Yourself*.
-- **Sub-15ms Cold-Load Home Feed:** Instant disk caching for all Home feed rows.
-- **Targeted Architecture Builds:**
-  - **BitChord TV (`BitChordTV-*.apk`):**
-    - `arm64-v8a`: 64-bit Android TVs and streaming boxes (NVIDIA Shield, NVIDIA Shield Pro, Sony Bravia 4K).
-    - `armeabi-v7a`: 32-bit Android TVs and streaming sticks (Amazon Fire TV Stick 4K / Max, Google TV TCL, Chromecast with Google TV).
-    - `universal`: Universal TV build compatible with any Android TV hardware.
-  - **BitChord Mobile (`BitChord-App-*.apk`):**
-    - `arm64-v8a`: Modern 64-bit Android smartphones and tablets (Samsung Galaxy S23, Google Pixel, OnePlus).
-    - `universal`: Universal mobile build compatible with any Android phone or tablet.
-- Detailed architecture and resolution notes are documented in [ISSUES.md](ISSUES.md).
 
 </div>
 
