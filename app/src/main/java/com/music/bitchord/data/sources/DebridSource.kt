@@ -53,6 +53,12 @@ class DebridSource(
 
     override val configId: String get() = config.id
     override val kind: SourceKind get() = SourceKind.DEBRID
+
+    /**
+     * RedLake file names carry no runtime, so the resolver must not apply its
+     * strict length check to these rows — see [MusicSource.statesDuration].
+     */
+    override val statesDuration: Boolean get() = false
     override val displayName: String
         get() = config.label.ifBlank {
             val provider = DebridProviders.labelFor(providerId)

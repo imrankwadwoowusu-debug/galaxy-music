@@ -214,7 +214,7 @@ object CacheNames {
      * question is a different song with the same chorus.
      */
     fun queryOverlap(query: String, title: String, artist: String): Double {
-        val words = query.lowercase(Locale.ROOT).split(Regex("\\s+")).filter { it.length > 1 }.toSet()
+        val words = query.lowercase(Locale.ROOT).split(WHITESPACE).filter { it.length > 1 }.toSet()
         if (words.isEmpty()) return 0.0
         val haystack = "$title $artist".lowercase(Locale.ROOT)
         val hit = words.count { haystack.contains(it) }
@@ -227,4 +227,7 @@ object CacheNames {
 
     /** An album's `01.`, `1 -` or `01)` prefix is filing, not part of the title. */
     private val TRACK_NUMBER = Regex("""^\s*\d{1,3}\s*[.)\-]\s+""")
+
+    /** Compiled once: search splits the same question against every library row. */
+    private val WHITESPACE = Regex("\\s+")
 }

@@ -1156,6 +1156,7 @@ class SourcesTest {
         private val format: StreamFormat?,
         override val kind: SourceKind = SourceKind.JIOSAAVN,
         private val candidates: List<Song>? = null,
+        override val statesDuration: Boolean = true,
     ) : MusicSource {
         override val configId = displayName
         var asked = false
@@ -1329,6 +1330,63 @@ class SourcesTest {
         assertNull(
             SourceResolver.bestAcross(
                 listOf(wrongMexico),
+                target,
+                StreamRequest.Lossless,
+                waitForAll = true,
+                strictLength = true,
+                requireSharedArtist = true,
+            ),
+        )
+    }
+
+    /**
+     * A debrid row names its recording but cannot state how long it is. The
+     * strict length check has nothing to compare there, and applying it anyway
+     * rejected every row — which is why a download came from YouTube even when
+     * the account held the FLAC. See [MusicSource.statesDuration].
+     */
+    @Test
+    fun `strict length keeps rows from a source that cannot state a runtime`() = runBlocking {
+        val debrid = FakeSource(
+            displayName = "Debrid",
+            answerAfterMs = 0,
+            format = StreamFormat("flac"),
+            kind = SourceKind.DEBRID,
+            candidates = listOf(song("Mexico", "Karan Aujla", duration = null)),
+            statesDuration = false,
+        )
+        val target = TrackMatcher.Target("Mexico", "Karan Aujla", durationSec = 207)
+
+        val (source, stream) = SourceResolver.bestAcross(
+            listOf(debrid),
+            target,
+            StreamRequest.Lossless,
+            waitForAll = true,
+            strictLength = true,
+            requireSharedArtist = true,
+        )!!
+        assertEquals("Debrid", source.displayName)
+        assertEquals("flac", stream.format.codec)
+    }
+
+    /**
+     * The same unstated runtime is still refused when the source is one that
+     * normally states them: there the missing number is a gap in that row, not
+     * a property of the whole catalogue.
+     */
+    @Test
+    fun `strict length still rejects an unstated runtime elsewhere`() = runBlocking {
+        val catalogue = FakeSource(
+            displayName = "A catalogue",
+            answerAfterMs = 0,
+            format = StreamFormat("flac"),
+            candidates = listOf(song("Mexico", "Karan Aujla", duration = null)),
+        )
+        val target = TrackMatcher.Target("Mexico", "Karan Aujla", durationSec = 207)
+
+        assertNull(
+            SourceResolver.bestAcross(
+                listOf(catalogue),
                 target,
                 StreamRequest.Lossless,
                 waitForAll = true,

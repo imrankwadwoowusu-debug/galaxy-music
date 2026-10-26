@@ -123,6 +123,21 @@ interface MusicSource {
     suspend fun health(): SourceHealth
 
     /**
+     * Whether rows from [search] state a runtime.
+     *
+     * Almost every source does, and the strict length check in
+     * [SourceResolver] is how it tells one cut of a recording from another.
+     * The debrid source does not: its rows are RedLake file names, which carry
+     * title, artist and tier but no duration, and the account library exposes
+     * no length to fill one in. A check that can only compare a stated runtime
+     * would reject every one of those rows — not because they are a different
+     * recording, but because there is no number to compare. Such a source
+     * declares false here and has already matched on the exact title and
+     * artist in the file's own name.
+     */
+    val statesDuration: Boolean get() = true
+
+    /**
      * Tracks matching [query], as [Song]s already tagged with this source's id
      * so that playing one comes back here — see [SourceRegistry.trackUri].
      *

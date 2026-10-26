@@ -873,7 +873,10 @@ object SourceResolver {
      *   because it is only meaningful when the target *has* a runtime:
      *   [TrackMatcher.withinSeconds] answers false for every candidate against a
      *   null one, so asking for this against a target that never carried a
-     *   duration is not a strict search but an empty one.
+     *   duration is not a strict search but an empty one. A source that cannot
+     *   state a runtime either — see [MusicSource.statesDuration] — skips the
+     *   check for the same reason: every one of its rows would fail it without
+     *   saying anything about the recording.
      */
     private suspend fun matchAndStream(
         source: MusicSource,
@@ -929,7 +932,7 @@ object SourceResolver {
             // song; a runtime that agrees this closely is one recording, and
             // nothing else is worth cutting a listener's audio for — or filing
             // on their device under the name of the track they asked for.
-            if (strictLength) {
+            if (strictLength && source.statesDuration) {
                 matches = matches.filter { TrackMatcher.withinSeconds(it, target, UPGRADE_DRIFT_SEC) }
             }
             if (matches.isEmpty()) continue

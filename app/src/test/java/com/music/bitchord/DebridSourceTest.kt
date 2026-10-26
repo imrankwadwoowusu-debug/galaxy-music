@@ -49,6 +49,10 @@ class DebridSourceTest {
     }
 
     @Test fun `lossless asks for flac and alac only`() {
+        assertFalse(
+            "a RedLake name states no runtime, so the resolver must not length-check it",
+            source.statesDuration,
+        )
         assertEquals(
             listOf(tier("Hi-Res"), tier("HiFi CD"), tier("ALAC")),
             source.tierFor(StreamRequest.Lossless),
