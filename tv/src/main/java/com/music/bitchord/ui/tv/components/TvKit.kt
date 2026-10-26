@@ -17,6 +17,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -953,6 +955,9 @@ fun TvTextField(
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
 
+    val focusRequester = remember { FocusRequester() }
+    val view = androidx.compose.ui.platform.LocalView.current
+
     LaunchedEffect(focused) {
         if (!focused) {
             isEditing = false
@@ -962,22 +967,16 @@ fun TvTextField(
 
     LaunchedEffect(isEditing) {
         if (isEditing) {
+            runCatching { focusRequester.requestFocus() }
             keyboardController?.show()
+            val imm = view.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+            imm?.showSoftInput(view, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
             kotlinx.coroutines.delay(50)
             keyboardController?.show()
+            imm?.showSoftInput(view, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         } else {
             keyboardController?.hide()
         }
-    }
-
-    val clickModifier = if (!isEditing) {
-        Modifier.clickable(
-            interactionSource = interaction,
-            indication = null,
-            onClick = { isEditing = true },
-        )
-    } else {
-        Modifier
     }
 
     androidx.compose.foundation.text.BasicTextField(
@@ -1026,7 +1025,14 @@ fun TvTextField(
             },
         ),
         modifier = modifier
-            .then(clickModifier)
+            .focusRequester(focusRequester)
+            .pointerInput(Unit) {
+                detectTapGestures {
+                    if (!isEditing) {
+                        isEditing = true
+                    }
+                }
+            }
             // One line, so Up and Down have nothing to do inside the field: they
             // always move focus. Compose only lets them out for key events from a
             // D-pad device; a keyboard's arrows (BlueStacks, a USB keyboard, some
