@@ -330,9 +330,15 @@ internal fun TvTransport(
     onToggleLyrics: () -> Unit,
     onToggleUpNext: () -> Unit,
     onMore: () -> Unit,
+    onUpgradeHiFi: () -> Unit,
     upNext: @Composable () -> Unit,
 ) {
     val showStats by AppSettings.showNerdStats.collectAsState()
+    val stats by NerdStats.current.collectAsState()
+    val racingLossless by NerdStats.racingLossless.collectAsState()
+    val isUpgrading = song.videoId in racingLossless
+    val isAlreadyLossless = stats?.let { it.isLossless || it.isHiRes || it.isDolbyAtmos } == true
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -357,7 +363,16 @@ internal fun TvTransport(
                 )
                 TvQualityLine(showStats = showStats, modifier = Modifier.padding(top = 6.dp))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(11.dp),
+            ) {
+                if (!isAlreadyLossless) {
+                    TvUpgradePill(
+                        isUpgrading = isUpgrading,
+                        onClick = onUpgradeHiFi,
+                    )
+                }
                 TvTransportButton(
                     icon = if (isLiked) BitChordIcons.StarFilled else BitChordIcons.Star,
                     contentDescription = if (isLiked) "Unfavorite" else "Favorite",
@@ -443,6 +458,60 @@ private fun TvTransportButton(
                 text = badge,
                 style = TvType.Body.copy(fontSize = 14.sp, fontWeight = FontWeight.W700),
                 color = if (focused) TvGlass.OnPlatter else TvGlass.TextPrimary,
+            )
+        }
+    }
+}
+
+/**
+ * A sleek glass pill on the transport that queries all lossless addons immediately on demand.
+ * Features tvOS lift elevation, glassmorphism highlight, and auto-disappears once the song plays lossless.
+ */
+@Composable
+private fun TvUpgradePill(
+    isUpgrading: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val shape = RoundedCornerShape(19.dp)
+    Row(
+        modifier = modifier
+            .height(37.dp)
+            .tvLift(interaction, shape, focusedScale = 1.08f, elevation = 10.dp)
+            .tvPlatter(
+                interaction,
+                resting = Color.White.copy(alpha = 0.14f),
+                focused = TvGlass.Platter,
+            )
+            .tvClick(interaction, enabled = !isUpgrading, onClick = onClick)
+            .padding(horizontal = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (isUpgrading) {
+            TvActivityIndicator(
+                size = 13.dp,
+                color = if (focused) TvGlass.OnPlatter else Color.White,
+            )
+            Text(
+                text = "Searching…",
+                style = TvType.Caption.copy(fontSize = 12.sp, fontWeight = FontWeight.W600),
+                color = if (focused) TvGlass.OnPlatter else TvGlass.TextPrimary,
+                maxLines = 1,
+            )
+        } else {
+            Text(
+                text = "⚡",
+                style = TvType.Caption.copy(fontSize = 12.sp),
+                color = if (focused) TvGlass.OnPlatter else Color(0xFFFFD54F),
+            )
+            Text(
+                text = "Upgrade Hi-Fi",
+                style = TvType.Caption.copy(fontSize = 12.sp, fontWeight = FontWeight.W600),
+                color = if (focused) TvGlass.OnPlatter else TvGlass.TextPrimary,
+                maxLines = 1,
             )
         }
     }
