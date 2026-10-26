@@ -14,13 +14,24 @@ import java.security.MessageDigest
  * {Quality Label}].{ext}`. The MD5 of that name is what the cache is asked
  * about, and a hit whose reported name equals the asked name is the track.
  *
- * The `BitTor` tag inside [filename] is a byte-exact protocol constant,
+ * The [PROTOCOL_TAG] inside [filename] is a byte-exact protocol constant,
  * not branding: seeders name their files with it, so any other tag hashes
  * differently and never hits. Everything else here is pure string and hash
  * work, so it stays unit-testable on the JVM with no Android or network in
  * the loop.
+ *
+ * A rung may be filed under more than one spelling — `Dolby Atmos` and
+ * `E-AC-3 JOC`, an `.eac3` or an `.m4a` container. [candidates] hashes every
+ * spelling in the same batched cache check; a seeder renaming a tier should
+ * not make the track look uncached.
  */
 object CacheNames {
+
+    /**
+     * The seeder convention's tag. Part of the hashed name, so changing it
+     * changes every lookup — it must match the files the cache actually holds.
+     */
+    internal const val PROTOCOL_TAG = "RedLake"
 
     /** One quality rung a cache may hold a track at. */
     data class Tier(
@@ -32,12 +43,66 @@ object CacheNames {
         val kbps: Int?,
         /** Container/codec for [StreamFormat]. */
         val codec: String,
-    )
+        /**
+         * Whether the rung is bit-exact. Deliberately separate from
+         * `kbps == null`: an immersive E-AC-3 or AC-4 file states no bitrate
+         * either, and must not be offered as lossless.
+         */
+        val lossless: Boolean = kbps == null,
+        /** Other names the same rung is published under, primary first. */
+        val aliases: List<String> = emptyList(),
+        /** Other containers the same rung is published in, primary first. */
+        val otherExts: List<String> = emptyList(),
+    ) {
+        /** Every label this rung is published under. */
+        val labels: List<String> get() = listOf(label) + aliases
 
-    /** Highest fidelity first — the order a stream is picked in. */
+        /** Every extension this rung is published with. */
+        val exts: List<String> get() = listOf(ext) + otherExts
+
+        /** True for an immersive Dolby mix, which is lossy and needs a decoder. */
+        val isDolbyAtmos: Boolean
+            get() = codec == "eac3-joc" || codec == "ec3-joc" || codec == "ac4" || codec == "ac-4"
+    }
+
+    /**
+     * Highest fidelity first — the order a stream is picked in.
+     *
+     * Lossless copies lead, then the immersive Dolby mixes, then the lossy
+     * stereo rungs. The immersive files state no bitrate, so they are only
+     * reachable on `Best`; a capped connection asks for a bounded stereo rung
+     * instead, and `Lossless` never sees them at all.
+     */
     val TIERS = listOf(
         Tier("Hi-Res", "flac", kbps = null, codec = "flac"),
         Tier("HiFi CD", "flac", kbps = null, codec = "flac"),
+        Tier(
+            label = "ALAC",
+            ext = "m4a",
+            kbps = null,
+            codec = "alac",
+            aliases = listOf("Apple Lossless"),
+        ),
+        Tier(
+            label = "Dolby Atmos",
+            ext = "eac3",
+            kbps = null,
+            codec = "eac3-joc",
+            lossless = false,
+            // E-AC-3 JOC is what carries Atmos here. Seeders shorten it in
+            // several ways, and the label is part of the hash.
+            aliases = listOf("E-AC-3 JOC", "EAC3-JOC", "E-AC3 JOC", "EAC3 JOC", "Atmos"),
+            otherExts = listOf("m4a"),
+        ),
+        Tier(
+            label = "AC-4",
+            ext = "ac4",
+            kbps = null,
+            codec = "ac4",
+            lossless = false,
+            aliases = listOf("AC4", "Dolby Atmos AC-4"),
+            otherExts = listOf("m4a"),
+        ),
         Tier("320kbps", "m4a", kbps = 320, codec = "mp4"),
         Tier("96kbps", "m4a", kbps = 96, codec = "mp4"),
     )
@@ -55,19 +120,32 @@ object CacheNames {
 
     /** The exact file name a seeder uses for [catalogId] at [tier]. */
     fun filename(title: String, artist: String, catalogId: Long, tier: Tier): String =
-        "${clean(title)} - ${clean(artist)} [BitTor $catalogId - ${tier.label}].${tier.ext}"
+        filename(title, artist, catalogId, tier.label, tier.ext)
+
+    /** One spelling of a tier's file name. */
+    private fun filename(
+        title: String,
+        artist: String,
+        catalogId: Long,
+        label: String,
+        ext: String,
+    ): String = "${clean(title)} - ${clean(artist)} [$PROTOCOL_TAG $catalogId - $label].$ext"
 
     fun md5Hex(text: String): String =
         MessageDigest.getInstance("MD5")
             .digest(text.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
 
-    /** Every tier's candidate for one catalogue track. */
+    /** Every tier's candidate for one catalogue track, in every known spelling. */
     fun candidates(title: String, artist: String, catalogId: Long): List<Candidate> =
-        TIERS.map { tier ->
-            val name = filename(title, artist, catalogId, tier)
-            Candidate(tier, name, md5Hex(name))
-        }
+        TIERS.flatMap { tier ->
+            tier.labels.flatMap { label ->
+                tier.exts.map { ext ->
+                    val name = filename(title, artist, catalogId, label, ext)
+                    Candidate(tier, name, md5Hex(name))
+                }
+            }
+        }.distinctBy { it.md5 }
 
     /**
      * Which tiers came back cached, best first.
@@ -90,7 +168,14 @@ object CacheNames {
             .distinct()
             .sortedBy { TIERS.indexOf(it) }
 
-    fun formatOf(tier: Tier): StreamFormat = StreamFormat(codec = tier.codec, kbps = tier.kbps)
+    fun formatOf(tier: Tier): StreamFormat =
+        StreamFormat(codec = tier.codec, kbps = tier.kbps, container = tier.ext)
+
+    /** The format of the exact spelling that hit, so its container is right. */
+    fun formatOf(candidate: Candidate): StreamFormat =
+        formatOf(candidate.tier).copy(
+            container = candidate.name.substringAfterLast('.', candidate.tier.ext),
+        )
 
     /**
      * Whether [query]'s words show up in a `title artist` filing at all.

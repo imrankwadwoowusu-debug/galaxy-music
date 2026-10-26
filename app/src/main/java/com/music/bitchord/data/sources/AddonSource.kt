@@ -468,7 +468,7 @@ class AddonSource(
          */
         val AUDIO_CODECS = setOf(
             "flac", "alac", "wav", "aiff", "mp3", "aac", "he-aac", "m4a", "mp4",
-            "ogg", "opus", "vorbis", "webm", "eac3-joc", "ec3-joc",
+            "ogg", "opus", "vorbis", "webm", "eac3-joc", "ec3-joc", "ac4", "ac-4",
         )
     }
 }

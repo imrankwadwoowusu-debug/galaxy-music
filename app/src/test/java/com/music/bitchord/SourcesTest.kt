@@ -95,6 +95,14 @@ class SourcesTest {
         assertEquals(false, atmos.isLossless)
         assertEquals("Dolby Atmos", atmos.summary)
         assertTrue(SourceResolver.worthSwapping(atmos, StreamFormat(codec = "aac", kbps = 332)))
+
+        // AC-4 carries the same immersive mix in a newer codec, and must be
+        // treated the same way: premium, lossy, and not a FLAC substitute.
+        val ac4 = StreamFormat(codec = "ac4")
+        assertTrue(ac4.isDolbyAtmos)
+        assertEquals(false, ac4.isLossless)
+        assertEquals("Dolby Atmos", ac4.summary)
+        assertTrue(NerdStats.isDolbyAtmosMime("audio/ac4"))
     }
 
     /**
@@ -114,6 +122,10 @@ class SourcesTest {
         val atmos = StreamFormat(codec = "eac3-joc")
         assertTrue(ModuleSource.unplayable(atmos, atmosAllowed = false))
         assertFalse(ModuleSource.unplayable(atmos, atmosAllowed = true))
+
+        val ac4 = StreamFormat(codec = "ac4")
+        assertTrue(ModuleSource.unplayable(ac4, atmosAllowed = false))
+        assertFalse(ModuleSource.unplayable(ac4, atmosAllowed = true))
 
         // Nothing else is affected either way: a FLAC is a FLAC on every phone,
         // and an undescribed stream is still worth handing to the decoder.

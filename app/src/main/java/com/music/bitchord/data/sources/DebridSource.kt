@@ -21,9 +21,11 @@ private const val TAG = "BitChord"
  *    (it validates the key live), then Save — saving also switches the
  *    source on.
  * 3. Play anything. The source is asked in rank order alongside the rest;
- *    on the Lossless rung it answers first with bit-exact FLAC when the
- *    track is cached, and playback silently falls through to the next
- *    source when it isn't. Nothing is needed per track.
+ *    on the Lossless rung it answers first with a bit-exact copy — FLAC or
+ *    ALAC — when the track is cached, and playback silently falls through to
+ *    the next source when it isn't. The same cache is asked for Dolby Atmos
+ *    (E-AC-3 JOC and AC-4) when the listener has immersive audio on. Nothing
+ *    is needed per track.
  *
  * ## How streaming works (pipeline, per track)
  *
@@ -98,11 +100,12 @@ class DebridSource(
         }
         val hits = DebridCache.checkCached(key, wantedByTrack.values.flatMap { it.keys })
             .mapValues { it.value.name }
+        val atmosAllowed = atmosWanted()
         val songs = shortlisted.mapNotNull { track ->
             val tiers = CacheNames.matchedTiers(wantedByTrack.getValue(track.id), hits)
-                .filter { tierFor(request).contains(it) }
+                .filter { it in tierFor(request, atmosAllowed) }
             if (tiers.isEmpty()) return@mapNotNull null
-            songOf(track)
+            songOf(track, tiers.first())
         }
         TrackLog.d(TAG, "  ✓ Debrid cached ${songs.size}/${shortlisted.size} track(s) for \"$query\"")
         return songs.take(limit)
@@ -116,31 +119,50 @@ class DebridSource(
         val wanted = CacheNames.candidates(title, artist, catalogId).associateBy { it.md5 }
         val refs = DebridCache.checkCached(key, wanted.keys.toList())
         val tier = CacheNames.matchedTiers(wanted, refs.mapValues { it.value.name })
-            .firstOrNull { it in tierFor(request) }
+            .firstOrNull { it in tierFor(request, atmosWanted()) }
             ?: run {
                 TrackLog.d(TAG, "  ✗ Debrid: no cached tier for catalogId=$catalogId at $request")
                 return null
             }
-        val torrentId = refs.entries
-            .firstOrNull { (md5, ref) -> wanted[md5]?.tier == tier && ref.name == wanted[md5]?.name }
-            ?.value?.torrentId ?: return null
-        val url = DebridCache.downloadUrl(key, torrentId) ?: return null
-        TrackLog.d(TAG, "  ✓ Debrid ${tier.label} torrent=$torrentId")
-        return SourceStream(url = url, format = CacheNames.formatOf(tier))
+        val cached = refs.entries.firstNotNullOfOrNull { (md5, ref) ->
+            wanted[md5]?.takeIf { it.tier == tier && ref.name == it.name }?.let { it to ref }
+        } ?: return null
+        val url = DebridCache.downloadUrl(key, cached.second.torrentId) ?: return null
+        TrackLog.d(TAG, "  ✓ Debrid ${cached.first.name} torrent=${cached.second.torrentId}")
+        return SourceStream(url = url, format = CacheNames.formatOf(cached.first))
     }
 
     /**
      * Which tiers answer [request], best first. Lossless asks for bit-exact
-     * only; a capped connection excludes the unbounded FLAC rungs; anything
-     * else takes the best the cache holds.
+     * copies only — FLAC and ALAC; a capped connection excludes the unbounded
+     * lossless and immersive rungs; anything else takes the best the cache
+     * holds.
+     *
+     * [atmosAllowed] folds the device's decoder probe and the listener's
+     * setting into one answer: an immersive mix the phone cannot decode, or
+     * that the listener switched off, is not offered even when it is the only
+     * cached copy. The source then falls through to the next rung, or misses
+     * and lets another source play the track.
      */
-    internal fun tierFor(request: StreamRequest?): List<CacheNames.Tier> = when (request) {
-        is StreamRequest.Lossless -> CacheNames.TIERS.filter { it.kbps == null }
-        is StreamRequest.Capped -> CacheNames.TIERS.filter { it.kbps != null && it.kbps <= request.maxKbps }
-        else -> CacheNames.TIERS
+    internal fun tierFor(
+        request: StreamRequest?,
+        atmosAllowed: Boolean = true,
+    ): List<CacheNames.Tier> {
+        val playable = CacheNames.TIERS.filter { atmosAllowed || !it.isDolbyAtmos }
+        return when (request) {
+            is StreamRequest.Lossless -> playable.filter { it.lossless }
+            is StreamRequest.Capped -> playable.filter {
+                !it.lossless && it.kbps != null && it.kbps <= request.maxKbps
+            }
+            else -> playable
+        }
     }
 
-    private fun songOf(track: CatalogMetadata.CatalogTrack): Song {
+    /** The same two gates [ModuleSource.unplayable] and the addon path use. */
+    private fun atmosWanted(): Boolean =
+        DeviceCodecs.playsDolbyAtmos && AppSettings.dolbyAtmos.value
+
+    private fun songOf(track: CatalogMetadata.CatalogTrack, tier: CacheNames.Tier): Song {
         val artist = track.artists.firstOrNull().orEmpty()
         return Song(
             videoId = SourceRegistry.trackKey(config.id, encodeTrackId(track.id, track.title, artist)),
@@ -151,7 +173,11 @@ class DebridSource(
             durationText = track.durationSec?.let { seconds ->
                 String.format("%d:%02d", seconds / 60, seconds % 60)
             },
-            sourceQuality = "HIGH",
+            sourceQuality = when {
+                tier.isDolbyAtmos -> ModuleSource.DOLBY
+                tier.lossless -> ModuleSource.LOSSLESS
+                else -> ModuleSource.HIGH
+            },
             isExplicit = track.explicit,
         )
     }

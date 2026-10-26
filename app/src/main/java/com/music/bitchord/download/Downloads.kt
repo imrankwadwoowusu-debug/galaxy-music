@@ -1284,7 +1284,7 @@ object Downloads {
             return null
         }
 
-        val storable = DownloadStore.storable(stream.format.codec)
+        val storable = DownloadStore.storable(stream.format.codec, stream.format.container)
         if (storable == null) {
             Log.d(TAG, "nothing to file a '${stream.format.codec}' as; taking YouTube for ${track.videoId}")
             return null

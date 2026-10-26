@@ -189,7 +189,12 @@ object NerdStats {
         else java.math.BigDecimal(hz).movePointLeft(6).stripTrailingZeros().toPlainString() + " MHz"
 
     fun isDolbyAtmosMime(mimeType: String?): Boolean =
-        mimeType != null && (mimeType.endsWith("eac3-joc") || mimeType.endsWith("eac3"))
+        mimeType != null && (
+            mimeType.endsWith("eac3-joc") ||
+                mimeType.endsWith("eac3") ||
+                mimeType.endsWith("ac4") ||
+                mimeType.endsWith("ac-4")
+            )
 
     fun isRawPcm(mimeType: String?): Boolean =
         mimeType != null && (mimeType == "audio/raw" || mimeType.endsWith("wav", ignoreCase = true) || mimeType == "audio/x-wav")

@@ -131,11 +131,25 @@ object DownloadStore {
      * concerned — the tagger works on the box tree and never asks what the
      * samples inside are.
      */
-    fun storable(codec: String?): Storable? = when (codec?.lowercase(Locale.ROOT)?.trim()) {
-        "flac", "x-flac" -> Storable("flac", "audio/flac")
-        "wav", "x-wav", "wave" -> Storable("wav", "audio/x-wav")
-        "alac", "m4a", "mp4", "eac3-joc", "ec3-joc", "dolby-atmos" -> Storable("m4a", "audio/mp4")
-        else -> null
+    fun storable(codec: String?, container: String? = null): Storable? {
+        val box = container?.lowercase(Locale.ROOT)?.trim()?.takeIf { it.isNotEmpty() }
+        return when (codec?.lowercase(Locale.ROOT)?.trim()) {
+            "flac", "x-flac" -> Storable("flac", "audio/flac")
+            "wav", "x-wav", "wave" -> Storable("wav", "audio/x-wav")
+            "alac", "m4a", "mp4" -> Storable("m4a", "audio/mp4")
+            // Immersive audio is usually inside MP4; a raw Dolby file keeps
+            // its own extension so the bytes and the declared type agree.
+            "eac3-joc", "ec3-joc", "dolby-atmos" -> when (box) {
+                "eac3" -> Storable("eac3", "audio/eac3")
+                "ec3" -> Storable("ec3", "audio/eac3")
+                else -> Storable("m4a", "audio/mp4")
+            }
+            "ac4", "ac-4" -> when (box) {
+                "ac4" -> Storable("ac4", "audio/ac4")
+                else -> Storable("m4a", "audio/mp4")
+            }
+            else -> null
+        }
     }
 
     // ---- Lookup -------------------------------------------------------------
