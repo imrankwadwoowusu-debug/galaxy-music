@@ -17,19 +17,35 @@ class DebridSourceTest {
 
     private fun tier(label: String) = CacheNames.TIERS.first { it.label == label }
 
-    @Test fun `track ids round-trip metadata without separators`() {
-        val id = DebridSource.encodeTrackId(359051850, "Monkeys Spinning Monkeys: Live?", "Kevin/MacLeod")
+    @Test fun `track ids round-trip the address without separators`() {
+        val fileName = "Monkeys Spinning Monkeys - Kevin MacLeod [RedLake 359051850 - Hi-Res].flac"
+        val id = DebridSource.encodeTrackId(42, 7, fileName)
         assertTrue(":" !in id)
-        val (catalogId, title, artist) = DebridSource.parseTrackId(id)!!
-        assertEquals(359051850L, catalogId)
-        assertEquals("Monkeys Spinning Monkeys: Live?", title)
-        assertEquals("Kevin/MacLeod", artist)
+        val (torrentId, fileId, name) = DebridSource.parseTrackId(id)!!
+        assertEquals(42L, torrentId)
+        assertEquals(7L, fileId)
+        assertEquals(fileName, name)
+    }
+
+    @Test fun `single-file torrents round-trip a zero file id`() {
+        val id = DebridSource.encodeTrackId(42, 0, "Song - Artist [RedLake 1 - 320kbps].m4a")
+        val (_, fileId, _) = DebridSource.parseTrackId(id)!!
+        assertEquals(0L, fileId)
     }
 
     @Test fun `garbage track ids are refused`() {
         assertNull(DebridSource.parseTrackId("359051850"))
-        assertNull(DebridSource.parseTrackId("tb!!!not-base64!!!"))
-        assertNull(DebridSource.parseTrackId("tbaGk=")) // valid base64, wrong shape
+        assertNull(DebridSource.parseTrackId("rl!!!not-base64!!!"))
+        assertNull(DebridSource.parseTrackId("rl" + java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString("42\n7".toByteArray())))
+        assertNull(DebridSource.parseTrackId("rl" + java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString("-42\n7\nSong - Artist [RedLake 1 - Hi-Res].flac".toByteArray())))
+        assertNull(DebridSource.parseTrackId("rl" + java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString("42\n-1\nSong - Artist [RedLake 1 - Hi-Res].flac".toByteArray())))
+        assertNull(DebridSource.parseTrackId("rl" + java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString("42\n7\n".toByteArray())))
+        // The old catalogue-id shape is not a valid address any more.
+        assertNull(DebridSource.parseTrackId("tbaGk="))
     }
 
     @Test fun `lossless asks for flac and alac only`() {
@@ -78,7 +94,7 @@ class DebridSourceTest {
         kotlinx.coroutines.runBlocking {
             assertTrue(source.health() is com.music.bitchord.data.sources.SourceHealth.Rejected)
             assertTrue(source.search("anything", 5, false, null).isEmpty())
-            assertNull(source.stream("tbabc", StreamRequest.Best))
+            assertNull(source.stream("rlabc", StreamRequest.Best))
         }
     }
 }

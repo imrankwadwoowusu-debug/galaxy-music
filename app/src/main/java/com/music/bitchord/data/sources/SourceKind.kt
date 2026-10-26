@@ -141,14 +141,15 @@ enum class SourceKind(
      * Cached torrents through the listener's own debrid account,
      * today, further providers behind the same row tomorrow.
      *
-     * A catalogue is matched on the metadata service, then the debrid cache
-     * is asked for the exact files by hash: a hit is bit-exact audio the
-     * service never has to stream itself. Needs an API key, entered on the
-     * row's editor, so it seeds off like JioSaavn until one is given.
+     * The account's own library is the index: its RedLake file names are read
+     * back into title, artist and tier, and a match is bit-exact audio the
+     * service never has to stream itself. No public catalogue is consulted.
+     * Needs an API key, entered on the row's editor, so it seeds off like
+     * JioSaavn until one is given.
      */
     DEBRID(
         label = "Debrid",
-        detail = "Bit-exact cached audio via your debrid account. Needs an API key.",
+        detail = "Bit-exact audio from your debrid library. Needs an API key and RedLake files.",
         labels = listOf("Lossless", "FLAC", "Cached"),
         needsServer = false,
         canServeLossless = true,

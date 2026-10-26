@@ -879,7 +879,7 @@ fun DebridEditorAlert(
     val rejected = stringResource(R.string.debrid_rejected)
 
     /**
-     * Checks the typed key against the debrid cache, then says so.
+     * Checks the typed key against the debrid account, then says so.
      *
      * Save runs the same check first: storing a key just refused
      * would leave a row whose toggle promises what the account cannot give.
@@ -895,8 +895,8 @@ fun DebridEditorAlert(
             val key = apiKey.trim()
             val name = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching {
-                    if (!com.music.bitchord.data.debrid.DebridCache.validateKey(key)) return@runCatching null
-                    com.music.bitchord.data.debrid.DebridCache.accountName(key)
+                    if (!com.music.bitchord.data.debrid.DebridApi.validateKey(key)) return@runCatching null
+                    com.music.bitchord.data.debrid.DebridApi.accountName(key)
                 }.getOrNull()
             }
             if (name == null) {
@@ -911,6 +911,7 @@ fun DebridEditorAlert(
 
             if (thenSave) {
                 AppSettings.setDebridApiKey(key)
+                com.music.bitchord.data.debrid.DebridApi.invalidateLibrary()
                 com.music.bitchord.data.sources.SourceRegistry.setEnabled(config.id, true)
                 onSaved()
             }

@@ -2,43 +2,50 @@ package com.music.bitchord.data.sources
 
 import java.util.Base64
 import com.music.bitchord.data.TrackLog
-import com.music.bitchord.data.debrid.DebridProviders
 import com.music.bitchord.data.debrid.CacheNames
-import com.music.bitchord.data.debrid.CatalogMetadata
-import com.music.bitchord.data.debrid.DebridCache
+import com.music.bitchord.data.debrid.DebridApi
+import com.music.bitchord.data.debrid.DebridProviders
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.settings.AppSettings
 
 private const val TAG = "BitChord"
 
 /**
- * Bit-exact audio from the listener's own debrid cache.
+ * Bit-exact audio from the listener's own debrid library.
  *
  * ## How to use (listeners)
  *
- * 1. Get an API key from your debrid provider's settings page.
- * 2. Open Settings → Sources → the Debrid row, paste the key, hit Test
- *    (it validates the key live), then Save — saving also switches the
- *    source on.
- * 3. Play anything. The source is asked in rank order alongside the rest;
- *    on the Lossless rung it answers first with a bit-exact copy — FLAC or
- *    ALAC — when the track is cached, and playback silently falls through to
- *    the next source when it isn't. The same cache is asked for Dolby Atmos
- *    (E-AC-3 JOC and AC-4) when the listener has immersive audio on. Nothing
- *    is needed per track.
+ * 1. Put the RedLake music you want into your debrid account's torrent
+ *    library. Nothing is searched on a public index; the account is the
+ *    library.
+ * 2. Open Settings → Sources → the Debrid row, paste the provider's API key,
+ *    hit Test (it validates the key live), then Save — saving also switches
+ *    the source on.
+ * 3. Play anything. The source is asked in rank order alongside the rest; it
+ *    answers with the best copy the account holds at the requested tier and
+ *    playback silently falls through to the next source when it holds none.
  *
- * ## How streaming works (pipeline, per track)
+ * ## How lookup works
  *
- * Catalogue metadata names the recording and its stable id, deterministic
- * file names are built per quality tier and hashed, and the debrid cache
- * is asked about all of them in one batched call. A hit whose held name
- * equals the asked name is the track; the download URL itself is resolved
- * at play time, since those links expire and a URL minted during search is
- * a 403 waiting to happen.
+ * A debrid cache is keyed by torrent infohash, which this app can never know
+ * up front. What it can read is the account's own library: `torrents/mylist`
+ * names every file, and [CacheNames] reads
+ * `{Clean Title} - {Clean Artist} [RedLake {Opaque Id} - {Quality}].{ext}`
+ * back into title, artist, tier and container. Search is a local filter over
+ * that list.
  *
- * The track id carries everything [stream] needs (catalogue id, title,
- * artist), so a queue restored after a restart resolves without anything
- * held in memory and without another metadata lookup on the play path.
+ * The id inside the brackets is deliberately opaque. It is never computed,
+ * resolved or checked against a catalogue, so no music service is involved
+ * and no seeding scheme has to be reproduced: any RedLake file in the account
+ * is found by the title and artist in its own name.
+ *
+ * ## How streaming works
+ *
+ * A row's track id carries the torrent id, file id and file name. Playback
+ * decodes it, checks the file's tier against the request, and asks the
+ * provider for exactly that file. The download link is minted at play time
+ * because those links expire; nothing is held in memory between search and
+ * playback, so a queue restored after a restart resolves the same way.
  */
 class DebridSource(
     override val config: SourceConfig,
@@ -65,7 +72,7 @@ class DebridSource(
         if (apiKey().isEmpty()) {
             return SourceHealth.Rejected("API key required")
         }
-        return runCatching { DebridCache.validateKey(apiKey()) }
+        return runCatching { DebridApi.validateKey(apiKey()) }
             .fold(
                 onSuccess = { valid ->
                     if (valid) SourceHealth.Ok(DebridProviders.labelFor(providerId))
@@ -83,66 +90,78 @@ class DebridSource(
     ): List<Song> {
         val key = apiKey()
         if (key.isEmpty() || !DebridProviders.isKnown(providerId)) return emptyList()
+        if (limit <= 0 || query.isBlank()) return emptyList()
         TrackLog.d(TAG, "▶ Debrid search \"$query\" limit=$limit")
-        val tracks = CatalogMetadata.searchTracks(query, limit = MAX_CATALOG_CANDIDATES)
-        if (tracks.isEmpty()) return emptyList()
-        // Relevance-ordered; past the first rows that share no words with the
-        // question, the catalogue is naming other songs with the same chorus.
-        val shortlisted = tracks
-            .filter { CacheNames.queryOverlap(query, it.title, it.artists.firstOrNull().orEmpty()) >= MIN_QUERY_OVERLAP }
-            .take(MAX_TRACKS_PER_SEARCH)
-            .ifEmpty { tracks.take(1) }
-        // One batched cache check across every tier of every shortlisted
-        // track; each track is then matched against only its own file names.
-        val wantedByTrack = shortlisted.associate { track ->
-            val artist = track.artists.firstOrNull().orEmpty()
-            track.id to CacheNames.candidates(track.title, artist, track.id).associateBy { it.md5 }
+        val library = DebridApi.library(key) ?: run {
+            TrackLog.w(TAG, "  ✗ Debrid library unavailable")
+            return emptyList()
         }
-        val hits = DebridCache.checkCached(key, wantedByTrack.values.flatMap { it.keys })
-            .mapValues { it.value.name }
-        val atmosAllowed = atmosWanted()
-        val songs = shortlisted.mapNotNull { track ->
-            val tiers = CacheNames.matchedTiers(wantedByTrack.getValue(track.id), hits)
-                .filter { it in tierFor(request, atmosAllowed) }
-            if (tiers.isEmpty()) return@mapNotNull null
-            songOf(track, tiers.first())
+        val allowed = tierFor(request, atmosWanted())
+        if (allowed.isEmpty()) return emptyList()
+
+        val matches = library.mapNotNull { file ->
+            val parsed = CacheNames.parse(file.name) ?: return@mapNotNull null
+            if (parsed.tier !in allowed) return@mapNotNull null
+            val overlap = CacheNames.queryOverlap(query, parsed.title, parsed.artist)
+            if (overlap < MIN_QUERY_OVERLAP) return@mapNotNull null
+            Held(file, parsed, overlap)
         }
-        TrackLog.d(TAG, "  ✓ Debrid cached ${songs.size}/${shortlisted.size} track(s) for \"$query\"")
-        return songs.take(limit)
+        if (matches.isEmpty()) {
+            TrackLog.d(TAG, "  · Debrid library holds no match for \"$query\"")
+            return emptyList()
+        }
+
+        // One row per recording, at the best tier this request can take. The
+        // same track is routinely filed in several torrents, and offering each
+        // copy would spend the result limit on one song.
+        val songs = matches
+            .groupBy { CacheNames.filingKey(it.parsed.title, it.parsed.artist) }
+            .values
+            .mapNotNull { copies -> copies.minByOrNull { allowed.indexOf(it.parsed.tier) } }
+            .sortedWith(
+                compareByDescending<Held> { it.overlap }
+                    .thenBy { allowed.indexOf(it.parsed.tier) },
+            )
+            .take(limit)
+            .map(::songOf)
+
+        TrackLog.d(
+            TAG,
+            "  ✓ Debrid ${songs.size} track(s) from ${library.size} file(s) for \"$query\"",
+        )
+        return songs
     }
 
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? {
         val key = apiKey()
         if (key.isEmpty() || !DebridProviders.isKnown(providerId)) return null
-        val (catalogId, title, artist) = parseTrackId(trackId) ?: return null
-        TrackLog.d(TAG, "▶ Debrid stream catalogId=$catalogId request=$request")
-        val wanted = CacheNames.candidates(title, artist, catalogId).associateBy { it.md5 }
-        val refs = DebridCache.checkCached(key, wanted.keys.toList())
-        val tier = CacheNames.matchedTiers(wanted, refs.mapValues { it.value.name })
-            .firstOrNull { it in tierFor(request, atmosWanted()) }
-            ?: run {
-                TrackLog.d(TAG, "  ✗ Debrid: no cached tier for catalogId=$catalogId at $request")
-                return null
-            }
-        val cached = refs.entries.firstNotNullOfOrNull { (md5, ref) ->
-            wanted[md5]?.takeIf { it.tier == tier && ref.name == it.name }?.let { it to ref }
-        } ?: return null
-        val url = DebridCache.downloadUrl(key, cached.second.torrentId) ?: return null
-        TrackLog.d(TAG, "  ✓ Debrid ${cached.first.name} torrent=${cached.second.torrentId}")
-        return SourceStream(url = url, format = CacheNames.formatOf(cached.first))
+        val (torrentId, fileId, fileName) = parseTrackId(trackId) ?: return null
+        val parsed = CacheNames.parse(fileName) ?: return null
+        val allowed = tierFor(request, atmosWanted())
+        if (parsed.tier !in allowed) {
+            TrackLog.d(
+                TAG,
+                "  ✗ Debrid: '${parsed.title}' is ${parsed.tier.label}, not an answer to $request",
+            )
+            return null
+        }
+        TrackLog.d(TAG, "▶ Debrid stream torrent=$torrentId file=$fileId ${parsed.tier.label}")
+        val url = DebridApi.downloadUrl(key, torrentId, fileId) ?: return null
+        TrackLog.d(TAG, "  ✓ Debrid '${parsed.title}' at ${parsed.tier.label}")
+        return SourceStream(url = url, format = CacheNames.formatOf(parsed.tier, parsed.ext))
     }
 
     /**
      * Which tiers answer [request], best first. Lossless asks for bit-exact
      * copies only — FLAC and ALAC; a capped connection excludes the unbounded
-     * lossless and immersive rungs; anything else takes the best the cache
+     * lossless and immersive rungs; anything else takes the best the library
      * holds.
      *
      * [atmosAllowed] folds the device's decoder probe and the listener's
      * setting into one answer: an immersive mix the phone cannot decode, or
      * that the listener switched off, is not offered even when it is the only
-     * cached copy. The source then falls through to the next rung, or misses
-     * and lets another source play the track.
+     * copy. The source then falls through to the next rung, or misses and lets
+     * another source play the track.
      */
     internal fun tierFor(
         request: StreamRequest?,
@@ -162,55 +181,58 @@ class DebridSource(
     private fun atmosWanted(): Boolean =
         DeviceCodecs.playsDolbyAtmos && AppSettings.dolbyAtmos.value
 
-    private fun songOf(track: CatalogMetadata.CatalogTrack, tier: CacheNames.Tier): Song {
-        val artist = track.artists.firstOrNull().orEmpty()
+    private fun songOf(held: Held): Song {
+        val parsed = held.parsed
         return Song(
-            videoId = SourceRegistry.trackKey(config.id, encodeTrackId(track.id, track.title, artist)),
-            title = track.title,
-            artist = artist.ifBlank { "Unknown Artist" },
-            albumName = track.album,
-            thumbnailUrl = track.coverId?.let(CatalogMetadata::coverUrl),
-            durationText = track.durationSec?.let { seconds ->
-                String.format("%d:%02d", seconds / 60, seconds % 60)
-            },
+            videoId = SourceRegistry.trackKey(
+                config.id,
+                encodeTrackId(held.file.torrentId, held.file.fileId, held.file.name),
+            ),
+            title = parsed.title,
+            artist = parsed.artist,
+            thumbnailUrl = null,
             sourceQuality = when {
-                tier.isDolbyAtmos -> ModuleSource.DOLBY
-                tier.lossless -> ModuleSource.LOSSLESS
+                parsed.tier.isDolbyAtmos -> ModuleSource.DOLBY
+                parsed.tier.lossless -> ModuleSource.LOSSLESS
                 else -> ModuleSource.HIGH
             },
-            isExplicit = track.explicit,
+            sourceHiRes = parsed.tier.label == "Hi-Res",
         )
     }
 
+    /** One parsed library file, with how well its name answers the question. */
+    private data class Held(
+        val file: DebridApi.LibraryFile,
+        val parsed: CacheNames.ParsedFile,
+        val overlap: Double,
+    )
+
     internal companion object {
-        /** Catalogue rows read per query; only the first couple ever survive matching. */
-        const val MAX_CATALOG_CANDIDATES = 5
-
-        /** Tracks taken to the cache check per query — one batched call. */
-        const val MAX_TRACKS_PER_SEARCH = 2
-
-        /** Minimum query-word overlap before a catalogue row is worth hashing. */
+        /** Minimum query-word overlap before a library row is worth offering. */
         const val MIN_QUERY_OVERLAP = 0.5
 
         /**
-         * Everything [stream] needs, in the id itself: catalogue id, title
-         * and artist, newline-separated and base64url-encoded (no `:` so it
-         * can never collide with [SourceRegistry]'s `::` track-key separator).
+         * Everything [stream] needs, in the id itself: torrent id, file id and
+         * the file's own name, newline-separated and base64url-encoded (no `:`
+         * so it can never collide with [SourceRegistry]'s `::` track-key
+         * separator).
          */
-        internal fun encodeTrackId(catalogId: Long, title: String, artist: String): String {
-            val payload = "$catalogId\n$title\n$artist".toByteArray(Charsets.UTF_8)
-            return "tb" + Base64.getUrlEncoder().withoutPadding()
+        internal fun encodeTrackId(torrentId: Long, fileId: Long, fileName: String): String {
+            val payload = "$torrentId\n$fileId\n$fileName".toByteArray(Charsets.UTF_8)
+            return "rl" + Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(payload)
         }
 
-        internal fun parseTrackId(rawId: String): Triple<Long, String, String>? {
-            if (!rawId.startsWith("tb")) return null
+        internal fun parseTrackId(rawId: String): Triple<Long, Long, String>? {
+            if (!rawId.startsWith("rl")) return null
             val parts = runCatching {
-                String(Base64.getUrlDecoder().decode(rawId.removePrefix("tb")), Charsets.UTF_8)
-            }.getOrNull()?.split("\n") ?: return null
+                String(Base64.getUrlDecoder().decode(rawId.removePrefix("rl")), Charsets.UTF_8)
+            }.getOrNull()?.split("\n", limit = 3) ?: return null
             if (parts.size != 3) return null
-            val id = parts[0].toLongOrNull() ?: return null
-            return Triple(id, parts[1], parts[2])
+            val torrentId = parts[0].toLongOrNull()?.takeIf { it > 0 } ?: return null
+            val fileId = parts[1].toLongOrNull()?.takeIf { it >= 0 } ?: return null
+            if (parts[2].isBlank()) return null
+            return Triple(torrentId, fileId, parts[2])
         }
     }
 }
