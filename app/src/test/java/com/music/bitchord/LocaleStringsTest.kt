@@ -52,32 +52,29 @@ class LocaleStringsTest(private val tag: String) {
         private val baseKeys: Set<String> by lazy {
             translatableKeys(parse(File(resDir, "values/strings.xml")))
         }
+
+        /**
+         * App language tags are BCP-47 (`zh-CN` / `zh-TW`) while Android
+         * resource directories use `-r` regions (`values-zh`, `values-zh-rTW`).
+         * Mirrors what Android resolves at runtime: Simplified is the bare
+         * `zh` catalogue, Traditional is `zh-rTW`.
+         */
+        internal fun tagToQualifier(tag: String): String = when (tag) {
+            "zh-CN" -> "zh"
+            "zh-TW" -> "zh-rTW"
+            else -> tag
+        }
     }
 
     @Test
     fun strings_containsAllBaseKeys() {
-        // BCP 47 tags don't map 1:1 to resource dirs: zh-TW lives in
-        // values-zh-rTW and zh-CN falls back to values-zh. Resolve the real
-        // dir the same way Android does — exact tag, then language-region,
-        // then bare language — instead of demanding a dir per tag.
-        val candidates = buildList {
-            add(File(resDir, "values-$tag/strings.xml"))
-            if ("-" in tag) {
-                val lang = tag.substringBefore("-")
-                val region = tag.substringAfter("-").uppercase()
-                add(File(resDir, "values-$lang-r$region/strings.xml"))
-                add(File(resDir, "values-$lang/strings.xml"))
-            }
-        }
-        val localeFile = candidates.firstOrNull { it.exists() }
-        assertTrue(
-            "no strings file found for $tag (tried ${candidates.map { it.name }})",
-            localeFile != null,
-        )
+        val qualifier = tagToQualifier(tag)
+        val localeFile = File(resDir, "values-$qualifier/strings.xml")
+        assertTrue("values-$qualifier/strings.xml must exist (for language tag $tag)", localeFile.exists())
 
-        val missingKeys = baseKeys - translatableKeys(parse(localeFile!!))
+        val missingKeys = baseKeys - translatableKeys(parse(localeFile))
         assertTrue(
-            "${localeFile.parentFile.name}/strings.xml is missing ${missingKeys.size} keys from values/strings.xml: $missingKeys",
+            "values-$qualifier/strings.xml (language $tag) is missing ${missingKeys.size} keys from values/strings.xml: $missingKeys",
             missingKeys.isEmpty(),
         )
     }

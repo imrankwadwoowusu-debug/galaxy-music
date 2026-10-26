@@ -26,6 +26,7 @@ jobs:
         echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
         echo "BOTGUARD_API_KEY=${{ secrets.BOTGUARD_API_KEY }}" >> local.properties
         echo "BOTGUARD_REQUEST_KEY=${{ secrets.BOTGUARD_REQUEST_KEY }}" >> local.properties
+        echo "LISTEN_TOGETHER_SERVER=${{ secrets.LISTEN_TOGETHER_SERVER }}" >> local.properties
 
         echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > bitchord-release.jks
         {
@@ -46,3 +47,12 @@ jobs:
       with:
         name: bitchord-prod-release-signed
         path: app/build/outputs/apk/prod/release/*.apk
+
+    # Built by the same assembleProdRelease, with the same key. The watch app
+    # only pairs with a phone app signed by the same key, so a prod watch APK
+    # for these phone builds can only come from here, never a local build.
+    - name: Upload Wear OS APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: bitchord-wear-prod-release-signed
+        path: wearos/build/outputs/apk/prod/release/*.apk
