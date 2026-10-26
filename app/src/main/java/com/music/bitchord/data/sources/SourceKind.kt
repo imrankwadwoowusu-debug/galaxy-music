@@ -150,7 +150,7 @@ enum class SourceKind(
     DEBRID(
         label = "Debrid",
         detail = "Bit-exact audio from your debrid library. Needs an API key and RedLake files.",
-        labels = listOf("Lossless", "FLAC", "Cached"),
+        labels = listOf("Lossless", "Atmos", "RedLake"),
         needsServer = false,
         canServeLossless = true,
         worthPrefetching = true,

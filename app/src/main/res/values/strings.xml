@@ -1129,7 +1129,7 @@
     <string name="card_songs_format">%1$s songs</string>
 
     <string name="debrid_editor_title">Debrid</string>
-    <string name="debrid_editor_subtitle">Bit-exact cached audio via your debrid account</string>
+    <string name="debrid_editor_subtitle">Bit-exact RedLake audio from your own debrid library</string>
     <string name="debrid_api_key">Debrid API key</string>
     <string name="debrid_api_key_required">Debrid API key required</string>
     <string name="debrid_key_hint">Paste your Debrid API key</string>
