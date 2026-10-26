@@ -89,6 +89,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.Snapshot
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import org.jetbrains.compose.resources.stringResource
@@ -131,12 +132,14 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
@@ -2702,6 +2705,12 @@ fun NowPlayingScreen(
                             -(statusBarTop.roundToPx() + topStrip.roundToPx() + ART_BOX_TOP_PAD.roundToPx())
                         }
                         val boxWidthPx = constraints.maxWidth
+                        // The sleeve is placed in absolute pixels (see the `place` calls
+                        // below, and the dock, which works in screen space), so the
+                        // start edge has to be resolved by hand. In a right-to-left
+                        // layout the card's slot, the title's start padding and the
+                        // collapsed thumbnail all belong on the right.
+                        val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                         // How far the expanded sleeve is the banner rather than the
                         // card. Zero until there is a banner to be, which is to say
                         // until [heroHeight] and the player's width have been measured.
@@ -2715,8 +2724,12 @@ fun NowPlayingScreen(
                         fun cardScale(): Float = artScale + (1f - artScale) * p()
                         fun cardRect(): Rect = with(density) {
                             val side = artSize().roundToPx().toFloat()
+                            val start = artStart().roundToPx().toFloat()
                             Rect(
-                                offset = Offset(artStart().roundToPx().toFloat(), artTop().roundToPx().toFloat()),
+                                offset = Offset(
+                                    if (rtl) boxWidthPx - start - side else start,
+                                    artTop().roundToPx().toFloat(),
+                                ),
                                 size = Size(side, side),
                             )
                         }
@@ -2731,7 +2744,10 @@ fun NowPlayingScreen(
                                 )
                             }
                             val thumbSide = with(density) { THUMB_SIZE.roundToPx().toFloat() }
-                            val thumb = Rect(Offset.Zero, Size(thumbSide, thumbSide))
+                            val thumb = Rect(
+                                Offset(if (rtl) boxWidthPx - thumbSide else 0f, 0f),
+                                Size(thumbSide, thumbSide),
+                            )
                             return lerp(card, lerp(banner, thumb, p()), share)
                         }
                         // The box's left edge in the player — the gutter, which the two
@@ -2797,6 +2813,11 @@ fun NowPlayingScreen(
                         // is not where the stats sit, nor where a drag should start.
                         Box(
                             modifier = Modifier
+                                // Reports no size (below), and a zero-width child at
+                                // TopStart lands on the right edge in a right-to-left
+                                // layout, shoving the whole sleeve off screen. Pinned
+                                // to the left so `place` means the same either way.
+                                .align(AbsoluteAlignment.TopLeft)
                                 // Measured and placed at layout time rather than in
                                 // composition, so the collapse costs a layout pass and
                                 // not a recomposition per frame. Reports no size of its
@@ -2925,6 +2946,9 @@ fun NowPlayingScreen(
                             // cover, which hides it the moment there is one.
                             Box(
                                 modifier = Modifier
+                                    // Zero-sized like the sleeve, so pinned left for
+                                    // the same reason.
+                                    .align(AbsoluteAlignment.TopLeft)
                                     .layout { measurable, _ ->
                                         val card = towardsDock(cardRect(), dockFrame.miniInBox)
                                         val sleeve = dockFrame.sleeve
