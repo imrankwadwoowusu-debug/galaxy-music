@@ -11,9 +11,12 @@ import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import io.ktor.http.parameters
 import io.ktor.http.contentType
 import kotlinx.coroutines.CancellationException
@@ -31,6 +34,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import java.net.URLEncoder
+import java.io.File
 import java.util.Locale
 
 /**
@@ -568,6 +572,69 @@ object DebridApi {
         null
     }
 
+    /**
+     * Submit torrent metadata for a file that this device is actively seeding.
+     * TorBox receives only the small .torrent file here; it pulls audio pieces
+     * from the seeder until its account copy is complete.
+     */
+    suspend fun addSeededTorrent(apiKey: String, torrentFile: File, name: String): Long? = try {
+        if (!torrentFile.isFile || torrentFile.length() !in 1..4_194_304) return null
+        val text = client.post("$BASE/v1/api/torrents/createtorrent") {
+            bearerAuth(apiKey.trim())
+            setBody(
+                MultiPartFormDataContent(
+                    formData {
+                        append("name", name)
+                        append("seed", "1")
+                        append("allow_zip", "false")
+                        append(
+                            "file",
+                            torrentFile.readBytes(),
+                            Headers.build {
+                                append(HttpHeaders.ContentType, "application/x-bittorrent")
+                                append(
+                                    HttpHeaders.ContentDisposition,
+                                    "filename=\"${torrentFile.name}\"",
+                                )
+                            },
+                        )
+                    },
+                ),
+            )
+        }.bodyAsText()
+        parseAddedTorrentId(text).also { id ->
+            if (id == null) TrackLog.w(TAG, "Debrid rejected the seeded torrent: ${text.take(160)}")
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        TrackLog.w(TAG, "Debrid seeded-torrent add error: ${e.message}")
+        null
+    }
+
+    /** Keep the completed upload in the account cache after the seeder stops. */
+    suspend fun airlockTorrent(apiKey: String, torrentId: Long, name: String): Boolean = try {
+        val text = client.put("$BASE/v1/api/torrents/edittorrent") {
+            bearerAuth(apiKey.trim())
+            contentType(ContentType.Application.Json)
+            setBody(
+                JsonObject(
+                    mapOf(
+                        "torrent_id" to JsonPrimitive(torrentId),
+                        "name" to JsonPrimitive(name),
+                        "airlocked" to JsonPrimitive(true),
+                    ),
+                ).toString(),
+            )
+        }.bodyAsText()
+        codec.parseToJsonElement(text).jsonObject.success()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        TrackLog.w(TAG, "Debrid airlock error: ${e.message}")
+        false
+    }
+
     internal fun parseAddedTorrentId(text: String): Long? = try {
         val root = codec.parseToJsonElement(text).jsonObject
         if (!root.success()) {
@@ -646,6 +713,27 @@ object DebridApi {
         throw e
     } catch (e: Exception) {
         TrackLog.w(TAG, "Debrid web download error: ${e.message}")
+        null
+    }
+
+    /**
+     * Ask for a playable URL for an earlier web download. A null result means
+     * it is not ready yet, no longer available, or the provider refused it;
+     * callers can fall back to the addon's live stream in all three cases.
+     */
+    suspend fun webDownloadUrl(apiKey: String, webId: Long): String? = try {
+        val text = client.get("$BASE/v1/api/webdl/requestdl") {
+            parameter("token", apiKey.trim())
+            parameter("web_id", webId)
+            parameter("file_id", 0)
+            parameter("zip_link", false)
+            parameter("redirect", false)
+        }.bodyAsText()
+        parseDownloadUrl(text)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        TrackLog.w(TAG, "Debrid web-download link error: ${e.message}")
         null
     }
 

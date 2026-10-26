@@ -92,6 +92,19 @@ class DebridSourceTest {
         assertFalse(DebridCache.isManifestUrl("https://example.com/track.flac"))
     }
 
+    @Test fun `host diagnostics omit URL paths and credentials`() {
+        assertEquals("cdn.example.com", DebridCache.urlHost("https://cdn.example.com/a.flac?token=secret"))
+        assertNull(DebridCache.urlHost("https://user:secret@cdn.example.com/a.flac"))
+        assertNull(DebridCache.urlHost("not a url"))
+    }
+
+    @Test fun `addon cache identity is stable and scoped to its configured addon`() {
+        val first = DebridCache.addonCacheKey("addon-a", "track-123")
+        assertEquals(first, DebridCache.addonCacheKey("addon-a", "track-123"))
+        assertTrue(first != DebridCache.addonCacheKey("addon-b", "track-123"))
+        assertTrue(first != DebridCache.addonCacheKey("addon-a", "track-456"))
+    }
+
     @Test fun `lossless asks for flac and alac only`() {
         assertFalse(
             "a RedLake name states no runtime, so the resolver must not length-check it",

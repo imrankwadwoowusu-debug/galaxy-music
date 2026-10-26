@@ -282,6 +282,15 @@ dependencies {
     implementation(project(":shared"))
     implementation(project(":sharedUi"))
 
+    // A local-cache-to-TorBox handoff needs a real BitTorrent seeder: TorBox
+    // pulls the bytes from this device after receiving the generated .torrent.
+    // Ship the native engine for every ABI supported by this APK.
+    implementation("org.libtorrent4j:libtorrent4j:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm64:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-x86:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-x86_64:2.1.0-39")
+
     // ---- Compose (Material 3) ----
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)

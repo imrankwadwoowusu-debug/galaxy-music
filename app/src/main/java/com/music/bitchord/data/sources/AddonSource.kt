@@ -244,6 +244,28 @@ class AddonSource(
      */
     suspend fun stream(trackId: String, request: StreamRequest, stereoOnly: Boolean): SourceStream? =
         withContext(Dispatchers.IO) {
+            val cacheKey = DebridCache.addonCacheKey(config.id, trackId)
+            // A ready provider-side copy is independent of the addon's uptime:
+            // mint a fresh TorBox URL and avoid the addon's stream request.
+            DebridCache.cachedAddonStream(cacheKey)?.let { cached ->
+                val answersRequest = when (request) {
+                    is StreamRequest.Lossless -> cached.format.isLossless == true
+                    is StreamRequest.Capped -> cached.format.kbps?.let { it <= request.maxKbps } == true
+                    is StreamRequest.Best -> true
+                }
+                val atmosAllowed = DeviceCodecs.playsDolbyAtmos && AppSettings.dolbyAtmos.value
+                if (answersRequest && !ModuleSource.unplayable(cached.format, atmosAllowed)) {
+                    TrackLog.d(TAG, "${config.displayName}: replaying $trackId from the Debrid cache")
+                    return@withContext SourceStream(
+                        url = cached.url,
+                        format = cached.format,
+                        durationSec = cached.durationSec,
+                        sourceConfigId = config.id,
+                        sourceNameOverride = "Debrid (TorBox)",
+                    )
+                }
+                TrackLog.d(TAG, "${config.displayName}: Debrid cache copy doesn't satisfy this play; using addon")
+            }
             if (!admitted("a stream")) return@withContext null
             val tier = request.tier
             val result = client.stream(trackId, tier, stereoOnly)
@@ -280,9 +302,12 @@ class AddonSource(
                 val row = rows[trackId]
                 DebridCache.autoCacheAddonStream(
                     answer,
+                    cacheKey = cacheKey,
                     title = row?.title,
                     artist = row?.artist,
                     format = row?.format,
+                    sourceFormat = opened.format,
+                    durationSec = opened.durationSec,
                 )
             }
             opened.also { stream ->
@@ -316,9 +341,12 @@ class AddonSource(
         if (opened != null) {
             DebridCache.autoCacheAddonStream(
                 answer,
+                cacheKey = DebridCache.addonCacheKey(config.id, trackId),
                 title = row.title,
                 artist = row.artist,
                 format = row.format,
+                sourceFormat = opened.format,
+                durationSec = opened.durationSec,
             )
         }
         return opened

@@ -607,11 +607,10 @@ object AppSettings {
 
     /**
      * Also search the provider's global cache, not only the account's own
-     * torrents. On by default: the account remains the library, and the global
-     * cache is an extra catalogue of files the listener could add in one tap.
-     * Switching it off leaves every request on the account alone.
+     * torrents. Off by default so search uses only the account library unless
+     * the listener explicitly opts into the provider's global catalogue.
      */
-    val debridGlobalSearch = MutableStateFlow(true)
+    val debridGlobalSearch = MutableStateFlow(false)
 
     /**
      * Add an addon stream to the debrid account in the background when it is
@@ -960,7 +959,7 @@ object AppSettings {
         webdavUsername.value = prefs.getString(KEY_WEBDAV_USERNAME, "").orEmpty()
         webdavPassword.value = authStore.webdavPassword.orEmpty()
         debridApiKey.value = authStore.debridApiKey.orEmpty()
-        debridGlobalSearch.value = prefs.getBoolean(KEY_DEBRID_GLOBAL_SEARCH, true)
+        debridGlobalSearch.value = prefs.getBoolean(KEY_DEBRID_GLOBAL_SEARCH, false)
         debridAutoCache.value = prefs.getBoolean(KEY_DEBRID_AUTO_CACHE, false)
         smbHost.value = prefs.getString(KEY_SMB_HOST, "").orEmpty()
         smbShare.value = prefs.getString(KEY_SMB_SHARE, "").orEmpty()
@@ -2154,6 +2153,5 @@ object AppSettings {
     private const val KEY_DISCORD_INFO_DISMISSED = "discord_info_dismissed"
     private const val KEY_LAST_VERSION_CODE = "last_version_code"
 }
-
 
 

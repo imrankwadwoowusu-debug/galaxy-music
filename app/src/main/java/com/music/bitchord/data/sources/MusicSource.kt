@@ -40,6 +40,8 @@ data class SourceStream(
      * against the runtime being played.
      */
     val durationSec: Int? = null,
+    /** Explicit serving backend when a source proxies another provider. */
+    val sourceNameOverride: String? = null,
     /**
      * Which [MusicSource.configId] this came from, when the caller knows.
      *

@@ -1,15 +1,20 @@
 package com.music.bitchord.data.debrid
 
+import android.content.Context
+import android.content.SharedPreferences
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.smb.SmbAuth
 import com.music.bitchord.data.smb.SmbClient
 import com.music.bitchord.data.smb.SmbConfig
+import com.music.bitchord.data.sources.StreamFormat
+import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.sources.addon.AddonStream
 import com.music.bitchord.data.webdav.WebDavClient
 import com.music.bitchord.data.webdav.WebDavConfig
 import com.music.bitchord.download.Downloads
+import com.music.bitchord.playback.AudioCache
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,9 +25,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 import java.io.InputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.net.URI
 import java.net.URLDecoder
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
@@ -38,25 +51,145 @@ private const val TAG = "BitChord"
  *    server-side download of something the provider does not hold.
  *  - **A public HTTP file** — a downloaded track's original source, or a
  *    file on a public WebDAV server — is handed to the provider's web
- *    downloader, which fetches it itself. TorBox has no media-upload
- *    endpoint, so the bytes must be reachable; a `content://` file on this
- *    phone is not.
+ *    downloader, which fetches it itself.
+ *  - **A rejected addon URL** falls back to a torrent made from the complete
+ *    local playback-cache copy. The device seeds the bytes until TorBox reports
+ *    completion; only the .torrent metadata is sent through the API.
  *  - **An SMB file** is first copied to the configured public WebDAV server,
  *    then fetched from there by the provider. An SMB share is not something
  *    TorBox can open, and a WebDAV server that requires a password is not
  *    something it can sign in to, so both are stated plainly rather than
- *    attempted and failed.
+ *    attempted and failed. (A local file needs no WebDAV bridge: the seeder
+ *    route can serve a completed copy directly from this device.)
  *
- * Nothing here runs on the playback path. Automatic caching is post-play and
- * best-effort; a manual cache gets a row in the song's action sheet so its
- * progress and its outcome are visible.
+ * Automatic caching is post-play and best-effort. Once a mapping exists, a
+ * later play asks TorBox for a fresh URL before contacting the addon, and
+ * falls back to the addon if the provider-side copy is not ready. Manual
+ * caching gets a row in the song's action sheet so its outcome is visible.
  */
 object DebridCache {
 
     /** The folder the SMB bridge writes into, under the configured WebDAV root. */
     private const val BRIDGE_FOLDER = "BitChord Debrid"
+    private const val PREFS_NAME = "bitchord_debrid_stream_cache"
+    private const val PREF_REFERENCES = "addon_references"
+    private const val REPLAY_LOOKUP_TIMEOUT_MS = 4_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val codec = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val references = ConcurrentHashMap<String, AddonCacheReference>()
+    @Volatile private var preferences: SharedPreferences? = null
+
+    @Serializable
+    private data class AddonCacheReference(
+        val torrentHash: String? = null,
+        val fileIndex: Int = -1,
+        val webDownloadId: Long? = null,
+        val pendingTorrentUpload: Boolean = false,
+        val apiKeyFingerprint: String,
+        val format: CachedStreamFormat,
+        val durationSec: Int? = null,
+    )
+
+    @Serializable
+    private data class CachedStreamFormat(
+        val codec: String? = null,
+        val kbps: Int? = null,
+        val sampleRateHz: Int? = null,
+        val bitDepth: Int? = null,
+        val kbpsInferred: Boolean = false,
+        val container: String? = null,
+    ) {
+        fun toStreamFormat() = StreamFormat(codec, kbps, sampleRateHz, bitDepth, kbpsInferred, container)
+
+        companion object {
+            fun from(format: StreamFormat) = CachedStreamFormat(
+                format.codec, format.kbps, format.sampleRateHz, format.bitDepth,
+                format.kbpsInferred, format.container,
+            )
+        }
+    }
+
+    data class CachedAddonStream(val url: String, val format: StreamFormat, val durationSec: Int?)
+
+    /** Restore stable addon-to-cache mappings before playback sources are built. */
+    fun init(context: Context) {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        preferences = prefs
+        val stored = runCatching {
+            val raw = prefs.getString(PREF_REFERENCES, null) ?: return@runCatching emptyMap()
+            codec.decodeFromString(MapSerializer(String.serializer(), AddonCacheReference.serializer()), raw)
+        }.getOrElse {
+            TrackLog.w(TAG, "Could not restore addon cache references: ${it.message}")
+            emptyMap()
+        }
+        synchronized(references) {
+            references.clear()
+            references.putAll(stored)
+        }
+    }
+
+    /** Stable across process restarts and scoped to one configured addon row. */
+    internal fun addonCacheKey(configId: String, trackId: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest("$configId\n$trackId".toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 0xff) }
+
+    private fun rememberAddonCache(cacheKey: String, reference: AddonCacheReference) {
+        synchronized(references) {
+            references[cacheKey] = reference
+            val prefs = preferences ?: return
+            val encoded = codec.encodeToString(
+                MapSerializer(String.serializer(), AddonCacheReference.serializer()),
+                references.toMap(),
+            )
+            prefs.edit().putString(PREF_REFERENCES, encoded).apply()
+        }
+    }
+
+    /** Get a fresh TorBox URL for a previously cached addon stream, or miss. */
+    suspend fun cachedAddonStream(cacheKey: String): CachedAddonStream? {
+        val reference = references[cacheKey] ?: return null
+        val key = AppSettings.debridApiKey.value.trim().takeIf { it.isNotEmpty() } ?: return null
+        if (reference.apiKeyFingerprint != apiKeyFingerprint(key)) return null
+        return withTimeoutOrNull(REPLAY_LOOKUP_TIMEOUT_MS) {
+            val url = if (reference.webDownloadId != null) {
+                DebridApi.webDownloadUrl(key, reference.webDownloadId)
+            } else {
+                val hash = reference.torrentHash ?: return@withTimeoutOrNull null
+                val library = DebridApi.library(key) ?: return@withTimeoutOrNull null
+                val torrentFiles = library.filter {
+                    it.hash.equals(hash, ignoreCase = true)
+                }
+                val file = if (reference.fileIndex >= 0) {
+                    torrentFiles.firstOrNull { it.fileIndex == reference.fileIndex }
+                } else {
+                    // Without Stremio's fileIdx only a single-file torrent is
+                    // unambiguous. Never silently stream another file in a pack.
+                    torrentFiles.singleOrNull()
+                } ?: run {
+                    // The library cache may have captured this torrent while
+                    // it was still finishing; let the very next play refresh.
+                    DebridApi.invalidateLibrary()
+                    return@withTimeoutOrNull null
+                }
+                DebridApi.downloadUrl(key, file.torrentId, file.fileId)
+            } ?: return@withTimeoutOrNull null
+            CachedAddonStream(url, reference.format.toStreamFormat(), reference.durationSec)
+        }
+    }
+
+    private fun apiKeyFingerprint(key: String): String = MessageDigest.getInstance("SHA-256")
+        .digest(key.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 0xff) }
+
+    fun needsLocalTorrentUpload(mediaId: String): Boolean {
+        if (!AppSettings.debridAutoCache.value) return false
+        val (configId, trackId) = SourceRegistry.parseTrackKey(mediaId) ?: return false
+        val reference = references[addonCacheKey(configId, trackId)] ?: return false
+        val key = AppSettings.debridApiKey.value.trim().takeIf { it.isNotEmpty() } ?: return false
+        return reference.pendingTorrentUpload && reference.apiKeyFingerprint == apiKeyFingerprint(key)
+    }
 
     /** Ids already handed to the provider in this process, so playback retries do not re-add. */
     private val autoSeen = ConcurrentHashMap.newKeySet<String>()
@@ -141,9 +274,12 @@ object DebridCache {
      */
     fun autoCacheAddonStream(
         stream: AddonStream,
+        cacheKey: String,
         title: String?,
         artist: String?,
         format: String?,
+        sourceFormat: StreamFormat,
+        durationSec: Int?,
     ) {
         if (!AppSettings.debridAutoCache.value) return
         val key = AppSettings.debridApiKey.value.trim()
@@ -155,31 +291,126 @@ object DebridCache {
         // A manifest is an index, not a file the provider's downloader can
         // keep. A torrent hash and a direct file URL are the only two shapes
         // that become a playable account entry.
-        if (hash == null && (stream.transport != null || isManifestUrl(url.orEmpty()))) return
+        if (stream.transport != null || isManifestUrl(url.orEmpty())) return
 
-        val identity = hash?.lowercase(Locale.ROOT) ?: url.orEmpty()
-        if (!autoSeen.add("$key\n$identity")) return
+        val identity = hash?.lowercase(Locale.ROOT)
+            ?.let { "$it\n${stream.fileIdx?.coerceAtLeast(0) ?: -1}" }
+            ?: url.orEmpty()
+        val seenKey = "$key\n$cacheKey\n$identity"
+        if (!autoSeen.add(seenKey)) return
         val name = displayName(title, artist, url, format)
+        val savedFormat = CachedStreamFormat.from(sourceFormat)
+        val keyFingerprint = apiKeyFingerprint(key)
 
         scope.launch {
             withContext(Dispatchers.IO) {
                 try {
                     if (hash != null) {
-                        if (DebridApi.library(key)?.any { it.hash.equals(hash, ignoreCase = true) } == true) {
-                            return@withContext
+                        val present = DebridApi.library(key)?.any {
+                            it.hash.equals(hash, ignoreCase = true)
                         }
-                        DebridApi.addCachedTorrent(key, hash, magnet = stream.magnet, name = name)
-                        DebridApi.invalidateLibrary()
+                        if (present != true) {
+                            val added = DebridApi.addCachedTorrent(key, hash, magnet = stream.magnet, name = name)
+                            if (added == null) {
+                                TrackLog.w(TAG, "Debrid could not add addon torrent ${hash.take(12)} yet")
+                            }
+                            DebridApi.invalidateLibrary()
+                        }
+                        rememberAddonCache(
+                            cacheKey,
+                            AddonCacheReference(
+                                torrentHash = hash.lowercase(Locale.ROOT),
+                                fileIndex = stream.fileIdx?.takeIf { it >= 0 } ?: -1,
+                                apiKeyFingerprint = keyFingerprint,
+                                format = savedFormat,
+                                durationSec = durationSec,
+                            ),
+                        )
                     } else if (url != null) {
                         if (!isPublicHttpUrl(url)) return@withContext
-                        DebridApi.createWebDownload(key, url, name = name)
+                        val webId = DebridApi.createWebDownload(key, url, name = name)
+                        if (webId != null) {
+                            rememberAddonCache(
+                                cacheKey,
+                                AddonCacheReference(
+                                    webDownloadId = webId,
+                                    apiKeyFingerprint = keyFingerprint,
+                                    format = savedFormat,
+                                    durationSec = durationSec,
+                                ),
+                            )
+                        } else {
+                            // The URL route is often refused for CDN URLs. Keep
+                            // a client-local mapping so playback-end handling
+                            // can seed the complete BitChord cache file instead.
+                            rememberAddonCache(
+                                cacheKey,
+                                AddonCacheReference(
+                                    pendingTorrentUpload = true,
+                                    apiKeyFingerprint = keyFingerprint,
+                                    format = savedFormat,
+                                    durationSec = durationSec,
+                                ),
+                            )
+                            throw IllegalStateException(
+                                "Debrid refused addon stream host ${urlHost(url) ?: "(unknown)"}; " +
+                                    "will try the completed local cache",
+                            )
+                        }
                     }
                 } catch (e: CancellationException) {
+                    autoSeen.remove(seenKey)
                     throw e
                 } catch (e: Exception) {
+                    autoSeen.remove(seenKey)
                     TrackLog.w(TAG, "Debrid auto-cache failed: ${e.message}")
                 }
             }
+        }
+    }
+
+    /**
+     * Turn a complete played-cache entry into a TorBox torrent upload. The
+     * media bytes are copied out of Media3's cache, seeded by libtorrent4j,
+     * and kept available until TorBox's account listing reports completion.
+     */
+    suspend fun uploadCompletedAddonCache(
+        context: Context,
+        mediaId: String,
+        title: String,
+        artist: String,
+    ) {
+        if (!AppSettings.debridAutoCache.value) return
+        val (configId, trackId) = SourceRegistry.parseTrackKey(mediaId) ?: return
+        val cacheKey = addonCacheKey(configId, trackId)
+        val reference = references[cacheKey]?.takeIf { it.pendingTorrentUpload } ?: return
+        val apiKey = AppSettings.debridApiKey.value.trim().takeIf { it.isNotEmpty() } ?: return
+        if (reference.apiKeyFingerprint != apiKeyFingerprint(apiKey)) return
+
+        val complete = AudioCache.completeCopyOf(mediaId) ?: run {
+            TrackLog.w(TAG, "No complete local cache copy to seed for '$title'")
+            return
+        }
+        val stagingDir = File(context.applicationContext.noBackupFilesDir, "debrid-seeding/$cacheKey")
+            .apply { mkdirs() }
+        val fileName = displayName(title, artist, null, complete.extension)
+            ?: "$cacheKey.${complete.extension}"
+        val staged = File(stagingDir, fileName)
+        try {
+            FileOutputStream(staged).use { output -> AudioCache.copyOut(complete, output) { _, _ -> } }
+            val cached = DebridTorrentSeeder.transfer(context.applicationContext, staged, apiKey, fileName)
+            rememberAddonCache(
+                cacheKey,
+                reference.copy(
+                    torrentHash = cached.infoHash,
+                    fileIndex = 0,
+                    webDownloadId = null,
+                    pendingTorrentUpload = false,
+                ),
+            )
+            TrackLog.d(TAG, "TorBox finished caching '$title' from this device (${cached.infoHash.take(12)})")
+        } finally {
+            stagingDir.deleteRecursively()
         }
     }
 
@@ -332,6 +563,11 @@ object DebridCache {
         val path = raw.substringBefore('?').substringBefore('#').lowercase(Locale.ROOT)
         return path.endsWith(".m3u8") || path.endsWith(".mpd")
     }
+
+    /** Host-only diagnostics: never log path, query parameters, or URL credentials. */
+    internal fun urlHost(raw: String): String? = runCatching {
+        URI(raw.trim()).takeIf { it.userInfo == null }?.host?.lowercase(Locale.ROOT)
+    }.getOrNull()?.takeIf { it.isNotBlank() }
 
     /**
      * A URL under the configured WebDAV library while that library has a

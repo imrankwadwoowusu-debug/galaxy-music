@@ -1235,7 +1235,7 @@
     <string name="debrid_global_search">Search global cache</string>
     <string name="debrid_global_search_summary">Include cached releases outside your account. A release is added to your account only when you play it.</string>
     <string name="debrid_auto_cache">Auto-cache addon streams</string>
-    <string name="debrid_auto_cache_summary">Add a stream to your debrid account after it starts playing. Torrents are added only when already cached.</string>
+    <string name="debrid_auto_cache_summary">Cache streams after playback starts. If TorBox rejects the URL, BitChord may seed the completed cache file from this device until TorBox finishes. This uses upload data and exposes your IP to torrent peers; only seed content you have the right to share.</string>
     <string name="cache_to_debrid">Cache to Debrid</string>
     <string name="caching_to_debrid">Caching to Debrid…</string>
     <string name="cached_to_debrid">Cached to Debrid</string>
