@@ -180,6 +180,7 @@
     <string name="italian">इतालवी</string>
     <string name="turkish">तुर्की</string>
     <string name="thai">थाई</string>
+    <string name="korean">कोरियाई</string>
     <string name="show_all">सभी देखें</string>
     <string name="grid_view">ग्रिड</string>
     <string name="list_view">लिस्ट</string>
@@ -451,6 +452,8 @@
     <string name="signed_in_as">%1$s के रूप में साइन इन है</string>
     <string name="signing_in">साइन इन हो रहा है…</string>
     <string name="sleep_timer">स्लीप टाइमर</string>
+    <string name="sleep_timer_custom">कस्टम</string>
+    <string name="start_sleep_timer">टाइमर शुरू करें</string>
     <string name="sources_no_lossless">कोई भी चालू स्रोत लॉसलेस ऑडियो नहीं दे सकता। बिना ट्रांसकोडिंग के उपलब्ध लॉसलेस फ़ाइलें चलाने के लिए कस्टम मॉड्यूल जोड़ें।</string>
     <string name="sources_order_footer">अगर किसी स्रोत के पास कोई ट्रैक नहीं है या उस तक पहुंचा नहीं जा सकता, तो BitChord अगला स्रोत आज़माता है। YouTube से ऊपर के स्रोत बेहतर वर्शन मिलने पर उसकी रिकॉर्डिंग बदल सकते हैं।</string>
     <string name="sources_order_header">स्रोत, इसी क्रम में आज़माए जाते हैं</string>
@@ -1057,9 +1060,7 @@
 
     <string name="settings_search_empty">No settings match “%1$s”</string>
 
-    <string name="prefer_music_only">Prefer music-only version</string>
 
-    <string name="prefer_music_only_subtitle">For music videos, show the video details while finding and loading the catalogue audio version</string>
     <string name="smart_version_alignment">स्मार्ट ऑडियो अलाइनमेंट</string>
     <string name="smart_version_alignment_subtitle">ठीक मेल खाने वाला प्लेबैक पल ढूँढने के लिए ऑडियो वेवफ़ॉर्म का विश्लेषण करता है</string>
 
@@ -1371,4 +1372,20 @@
     <string name="song_info_unavailable">उपलब्ध नहीं</string>
     <string name="song_info_error">कुछ जानकारी लोड नहीं हो सकी।</string>
     <string name="song_info_retry">फिर से कोशिश करें</string>
+    <string name="no_audio_version">No audio version found for this video</string>
+    <string name="no_video_version">No video version found for this song</string>
+    <string name="version_switch_in_party">Everyone in Listen Together hears the same version</string>
+    <string name="opened_file">खोली गई फ़ाइल</string>
+    <string name="folders">फ़ोल्डर</string>
+    <string name="folder">फ़ोल्डर</string>
+    <string name="no_local_folders">संगीत वाला कोई फ़ोल्डर नहीं</string>
+    <string name="offline_playlist_empty">यह प्लेलिस्ट अभी खाली है। गानों के मेनू से उन्हें जोड़ें।</string>
+    <string name="offline_liked_empty">इस डिवाइस पर पसंद किए गए गाने यहाँ दिखेंगे</string>
+    <string name="saved_on_this_device">इस डिवाइस पर सेव किया गया</string>
+    <string name="direct_source_stream_in_party">Listen Together पार्टी के दौरान बंद</string>
+    <string name="direct_source_stream">स्रोत से सीधी स्ट्रीम</string>
+    <string name="find_your_mood">अपना मूड खोजें</string>
+    <string name="progressive_blur">क्रमिक ब्लर</string>
+    <string name="remove_from_history">इतिहास से हटाएँ</string>
+    <string name="remove_from_history_failed">इतिहास से नहीं हटाया जा सका</string>
 </resources>

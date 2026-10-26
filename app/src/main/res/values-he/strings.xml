@@ -181,6 +181,7 @@
     <string name="italian">איטלקית</string>
     <string name="turkish">טורקית</string>
     <string name="thai">תאית</string>
+    <string name="korean">קוריאנית</string>
     <string name="show_all">הצג הכול</string>
     <string name="grid_view">רשת</string>
     <string name="list_view">רשימה</string>
@@ -416,6 +417,8 @@
     <string name="signed_in_as">מחובר כ-%1$s</string>
     <string name="signing_in">מתחבר…</string>
     <string name="sleep_timer">טיימר שינה</string>
+    <string name="sleep_timer_custom">מותאם אישית</string>
+    <string name="start_sleep_timer">הפעל טיימר</string>
     <string name="sources_no_lossless">שום מקור מופעל אינו יכול לספק שמע ללא אובדן נתונים. הוסף מודול מותאם אישית כדי להפעיל קבצים זמינים ללא אובדן נתונים ללא המרה.</string>
     <string name="sources_order_footer">אם למקור אין רצועה, BitChord מנסה את הבא. מקורות מעל YouTube יכולים להחליפו כשהם מוצאים גרסה טובה יותר.</string>
     <string name="sources_order_header">מקורות, נוסו בסדר זה</string>
@@ -1062,9 +1065,7 @@
 
     <string name="settings_search_empty">No settings match “%1$s”</string>
 
-    <string name="prefer_music_only">Prefer music-only version</string>
 
-    <string name="prefer_music_only_subtitle">For music videos, show the video details while finding and loading the catalogue audio version</string>
     <string name="smart_version_alignment">יישור אודיו חכם</string>
     <string name="smart_version_alignment_subtitle">ניתוח צורות הגל כדי למצוא בדיוק את רגע ההשמעה התואם</string>
 
@@ -1376,4 +1377,20 @@
     <string name="song_info_unavailable">לא זמין</string>
     <string name="song_info_error">לא ניתן לטעון חלק מהמידע.</string>
     <string name="song_info_retry">ניסיון חוזר</string>
+    <string name="no_audio_version">No audio version found for this video</string>
+    <string name="no_video_version">No video version found for this song</string>
+    <string name="version_switch_in_party">Everyone in Listen Together hears the same version</string>
+    <string name="opened_file">קובץ שנפתח</string>
+    <string name="folders">תיקיות</string>
+    <string name="folder">תיקייה</string>
+    <string name="no_local_folders">אין תיקיות עם מוזיקה</string>
+    <string name="offline_playlist_empty">הפלייליסט עדיין ריק. אפשר להוסיף שירים מהתפריט שלהם.</string>
+    <string name="offline_liked_empty">שירים שאהבת במכשיר הזה יופיעו כאן</string>
+    <string name="saved_on_this_device">נשמר במכשיר הזה</string>
+    <string name="direct_source_stream_in_party">כבוי בזמן מסיבת Listen Together</string>
+    <string name="direct_source_stream">הזרמה ישירה מהמקור</string>
+    <string name="find_your_mood">מצא את מצב הרוח שלך</string>
+    <string name="progressive_blur">טשטוש הדרגתי</string>
+    <string name="remove_from_history">הסרה מההיסטוריה</string>
+    <string name="remove_from_history_failed">לא ניתן להסיר מההיסטוריה</string>
 </resources>

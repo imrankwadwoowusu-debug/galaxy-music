@@ -182,6 +182,7 @@
     <string name="italian">Włoski</string>
     <string name="turkish">Turecki</string>
     <string name="thai">Tajski</string>
+    <string name="korean">Koreański</string>
     <string name="show_all">Pokaż wszystkie</string>
     <string name="audio_quality">Jakość audio</string>
     <string name="playback">Odtwarzanie</string>
@@ -413,6 +414,8 @@
     <string name="signed_in_as">Zalogowano jako %1$s</string>
     <string name="signing_in">Logowanie…</string>
     <string name="sleep_timer">Wyłącznik czasowy</string>
+    <string name="sleep_timer_custom">Własny</string>
+    <string name="start_sleep_timer">Uruchom minutnik</string>
     <string name="sources_no_lossless">Żadne włączone źródło nie może dostarczyć bezstratnego dźwięku. Dodaj moduł niestandardowy, aby odtwarzać dostępne pliki bezstratne bez transkodowania.</string>
     <string name="sources_order_footer">Jeśli źródło nie ma utworu lub jest niedostępne, BitChord próbuje następne. Źródła przed YouTube mogą je zastąpić, gdy znajdą lepszą wersję.</string>
     <string name="sources_order_header">Źródła, sprawdzane w tej kolejności</string>
@@ -1095,9 +1098,7 @@
 
     <string name="settings_search_empty">No settings match “%1$s”</string>
 
-    <string name="prefer_music_only">Preferuj wersję muzyczną</string>
 
-    <string name="prefer_music_only_subtitle">Dla teledysków pokazuje szczegóły wideo podczas wyszukiwania i ładowania wersji audio z katalogu</string>
 
     <string name="smart_version_alignment">Inteligentne dopasowanie dźwięku</string>
 
@@ -1411,4 +1412,20 @@
     <string name="song_info_unavailable">Niedostępne</string>
     <string name="song_info_error">Nie udało się wczytać części informacji.</string>
     <string name="song_info_retry">Spróbuj ponownie</string>
+    <string name="no_audio_version">No audio version found for this video</string>
+    <string name="no_video_version">No video version found for this song</string>
+    <string name="version_switch_in_party">Everyone in Listen Together hears the same version</string>
+    <string name="opened_file">Otwarty plik</string>
+    <string name="folders">Foldery</string>
+    <string name="folder">Folder</string>
+    <string name="no_local_folders">Brak folderów z muzyką</string>
+    <string name="offline_playlist_empty">Ta playlista jest jeszcze pusta. Dodaj utwory z ich menu.</string>
+    <string name="offline_liked_empty">Utwory polubione na tym urządzeniu pojawią się tutaj</string>
+    <string name="saved_on_this_device">Zapisano na tym urządzeniu</string>
+    <string name="direct_source_stream_in_party">Wyłączone podczas imprezy Listen Together</string>
+    <string name="direct_source_stream">Bezpośredni strumień ze źródła</string>
+    <string name="find_your_mood">Znajdź swój nastrój</string>
+    <string name="progressive_blur">Stopniowe rozmycie</string>
+    <string name="remove_from_history">Usuń z historii</string>
+    <string name="remove_from_history_failed">Nie udało się usunąć z historii</string>
 </resources>

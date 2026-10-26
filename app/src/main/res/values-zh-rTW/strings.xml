@@ -175,6 +175,7 @@
     <string name="italian">義大利語</string>
     <string name="turkish">土耳其語</string>
     <string name="thai">泰語</string>
+    <string name="korean">韓語</string>
     <string name="show_all">檢視全部</string>
     <string name="grid_view">網格</string>
     <string name="list_view">列表</string>
@@ -437,6 +438,8 @@
     <string name="signed_in_as">已登入為 %1$s</string>
     <string name="signing_in">正在登入…</string>
     <string name="sleep_timer">睡眠定時器</string>
+    <string name="sleep_timer_custom">自訂</string>
+    <string name="start_sleep_timer">開始計時</string>
     <string name="sources_no_lossless">已啟用的來源均無法提供無損音訊。新增自定義模組即可播放可用的無損檔案，而無需轉碼。</string>
     <string name="sources_order_footer">如果某個來源沒有該曲目或無法訪問，BitChord 會嘗試下一個來源。排在 YouTube 之前的來源如果返回更好的版本，可以替換其錄音。</string>
     <string name="sources_order_header">來源，按此順序嘗試</string>
@@ -1036,9 +1039,7 @@
 
     <string name="settings_search_empty">No settings match “%1$s”</string>
 
-    <string name="prefer_music_only">Prefer music-only version</string>
 
-    <string name="prefer_music_only_subtitle">For music videos, show the video details while finding and loading the catalogue audio version</string>
     <string name="smart_version_alignment">智慧音訊對齊</string>
     <string name="smart_version_alignment_subtitle">分析音訊波形，精確匹配對應的播放時刻</string>
 
@@ -1348,4 +1349,20 @@
     <string name="song_info_unavailable">暫無資訊</string>
     <string name="song_info_error">部分資訊無法載入。</string>
     <string name="song_info_retry">重試</string>
+    <string name="no_audio_version">No audio version found for this video</string>
+    <string name="no_video_version">No video version found for this song</string>
+    <string name="version_switch_in_party">Everyone in Listen Together hears the same version</string>
+    <string name="opened_file">已開啟的檔案</string>
+    <string name="folders">資料夾</string>
+    <string name="folder">資料夾</string>
+    <string name="no_local_folders">沒有包含音樂的資料夾</string>
+    <string name="offline_playlist_empty">這個播放清單還是空的。可從歌曲選單中加入。</string>
+    <string name="offline_liked_empty">你在這部裝置上喜歡的歌曲會顯示在這裡</string>
+    <string name="saved_on_this_device">已儲存在這部裝置上</string>
+    <string name="direct_source_stream_in_party">在 Listen Together 派對中時關閉</string>
+    <string name="direct_source_stream">直接從來源串流</string>
+    <string name="find_your_mood">尋找你的心情</string>
+    <string name="progressive_blur">漸進模糊</string>
+    <string name="remove_from_history">從歷史記錄中移除</string>
+    <string name="remove_from_history_failed">無法從歷史記錄中移除</string>
 </resources>

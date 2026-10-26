@@ -181,6 +181,7 @@
     <string name="italian">Italien</string>
     <string name="turkish">Turc</string>
     <string name="thai">Thaï</string>
+    <string name="korean">Coréen</string>
     <string name="show_all">Tout afficher</string>
     <string name="grid_view">Grille</string>
     <string name="list_view">Liste</string>
@@ -452,6 +453,8 @@
     <string name="signed_in_as">Connecté en tant que %1$s</string>
     <string name="signing_in">Connexion en cours…</string>
     <string name="sleep_timer">Minuteur de veille</string>
+    <string name="sleep_timer_custom">Personnalisé</string>
+    <string name="start_sleep_timer">Démarrer le minuteur</string>
     <string name="sources_no_lossless">Aucune source activée ne peut fournir de l\'audio sans perte. Ajoutez un module personnalisé pour lire les fichiers sans perte disponibles sans transcodage.</string>
     <string name="sources_order_footer">Si une source n\'a pas un titre ou est inaccessible, BitChord essaie la suivante. Les sources situées au-dessus de YouTube peuvent remplacer son enregistrement lorsqu\'elles renvoient une meilleure version.</string>
     <string name="sources_order_header">Sources, testées dans cet ordre</string>
@@ -1058,9 +1061,7 @@
 
     <string name="settings_search_empty">Aucun paramètre ne correspond à « %1$s »</string>
 
-    <string name="prefer_music_only">Préférer la version audio uniquement</string>
 
-    <string name="prefer_music_only_subtitle">Pour les clips vidéo, afficher les détails de la vidéo tout en recherchant et en chargeant la version audio du catalogue</string>
     <string name="smart_version_alignment">Alignement audio intelligent</string>
     <string name="smart_version_alignment_subtitle">Analyse les formes d\'onde pour retrouver le moment de lecture exactement correspondant</string>
 
@@ -1372,4 +1373,20 @@
     <string name="song_info_unavailable">Non disponible</string>
     <string name="song_info_error">Certaines informations n’ont pas pu être chargées.</string>
     <string name="song_info_retry">Réessayer</string>
+    <string name="no_audio_version">No audio version found for this video</string>
+    <string name="no_video_version">No video version found for this song</string>
+    <string name="version_switch_in_party">Everyone in Listen Together hears the same version</string>
+    <string name="opened_file">Fichier ouvert</string>
+    <string name="folders">Dossiers</string>
+    <string name="folder">Dossier</string>
+    <string name="no_local_folders">Aucun dossier contenant de la musique</string>
+    <string name="offline_playlist_empty">Cette playlist est encore vide. Ajoutez-y des titres depuis leur menu.</string>
+    <string name="offline_liked_empty">Les titres que vous aimez sur cet appareil apparaissent ici</string>
+    <string name="saved_on_this_device">Enregistrée sur cet appareil</string>
+    <string name="direct_source_stream_in_party">Désactivé pendant une fête Listen Together</string>
+    <string name="direct_source_stream">Flux direct depuis la source</string>
+    <string name="find_your_mood">Trouvez votre humeur</string>
+    <string name="progressive_blur">Flou progressif</string>
+    <string name="remove_from_history">Retirer de l\'historique</string>
+    <string name="remove_from_history_failed">Impossible de retirer de l\'historique</string>
 </resources>
