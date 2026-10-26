@@ -27,6 +27,13 @@ data class StreamFormat(
      * [NerdStats.sourceBitrate][com.music.bitchord.data.NerdStats.sourceBitrate].
      */
     val kbpsInferred: Boolean = false,
+    /**
+     * Container extension as the source named it — `m4a`, `eac3`, `ac4` —
+     * when it named one. Kept beside [codec] because the same codec can be
+     * filed in more than one box: ALAC and AC-4 are usually inside MP4, but
+     * a raw AC-4 or E-AC-3 file is a different extension and MIME type.
+     */
+    val container: String? = null,
 ) {
     /**
      * Whether this is a bit-exact copy of the master the source holds.
@@ -39,7 +46,7 @@ data class StreamFormat(
     val isLossless: Boolean?
         get() = codec?.let { it in LOSSLESS_CODECS }
 
-    /** Dolby Atmos carried in E-AC-3 JOC. This is immersive, but not lossless. */
+    /** Dolby Atmos carried in E-AC-3 JOC or AC-4. This is immersive, but not lossless. */
     val isDolbyAtmos: Boolean
         get() = codec in DOLBY_ATMOS_CODECS
 
@@ -54,6 +61,6 @@ data class StreamFormat(
 
     private companion object {
         val LOSSLESS_CODECS = setOf("flac", "alac", "wav", "aiff", "ape", "wv", "dsf", "dff")
-        val DOLBY_ATMOS_CODECS = setOf("eac3-joc", "ec3-joc", "dolby-atmos")
+        val DOLBY_ATMOS_CODECS = setOf("eac3-joc", "ec3-joc", "dolby-atmos", "ac4", "ac-4")
     }
 }

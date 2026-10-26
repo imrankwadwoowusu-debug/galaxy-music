@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -340,6 +341,12 @@ fun ServerEditorAlert(
     removeLabel: String? = null,
     /** Offered only when there is something stored to remove. */
     onRemove: (() -> Unit)? = null,
+    /**
+     * Extra settings drawn under the fields, inside the same card. The debrid
+     * editor uses it for its catalogue switches; every other editor leaves it
+     * absent and looks exactly as before.
+     */
+    extras: (@Composable () -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     AlertScaffold(hazeState = hazeState, onDismiss = { if (!testing) onDismiss() }) {
@@ -382,6 +389,10 @@ fun ServerEditorAlert(
                         onDone = { if (canSubmit && !testing) onSave() },
                     ),
                 )
+            }
+            if (extras != null) {
+                Spacer(Modifier.height(12.dp))
+                extras()
             }
         }
         AlertRule()
@@ -846,6 +857,159 @@ internal fun AlertScaffold(
                     onClick = {},
                 ),
             content = content,
+        )
+    }
+}
+
+/**
+ * The debrid key editor: API key in, tested and stored encrypted.
+ *
+ * The same frosted card as every server editor, through the shared
+ * [ServerEditorAlert] — one password field, Test above Save above Cancel,
+ * plus a destructive Clear row while a key is stored. Both buttons run the
+ * key check; Save additionally stores the key and switches the source on,
+ * so a configured row is a working row rather than a second trip to the
+ * switch. A rejected key is never stored: unlike a sleeping server, a wrong
+ * key has no future state in which it starts working.
+ */
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun DebridEditorAlert(
+    hazeState: HazeState,
+    config: com.music.bitchord.data.sources.SourceConfig,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit,
+    scope: kotlinx.coroutines.CoroutineScope,
+) {
+    var apiKey by remember { mutableStateOf(AppSettings.debridApiKey.value) }
+    var globalSearch by remember { mutableStateOf(AppSettings.debridGlobalSearch.value) }
+    var autoCache by remember { mutableStateOf(AppSettings.debridAutoCache.value) }
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var statusIsGood by remember { mutableStateOf(false) }
+
+    val connected = stringResource(R.string.debrid_connected)
+    val rejected = stringResource(R.string.debrid_rejected)
+
+    /**
+     * Checks the typed key against the debrid account, then says so.
+     *
+     * Save runs the same check first: storing a key just refused
+     * would leave a row whose toggle promises what the account cannot give.
+     * A null answer covers rejection and outage alike — the row's own
+     * health line already reports reachability per open, so a second
+     * distinguishing call would double every tap for a sentence nobody
+     * acts on differently.
+     */
+    fun run(thenSave: Boolean) {
+        busy = true
+        status = null
+        scope.launch {
+            val key = apiKey.trim()
+            val name = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    if (!com.music.bitchord.data.debrid.DebridApi.validateKey(key)) return@runCatching null
+                    com.music.bitchord.data.debrid.DebridApi.accountName(key)
+                }.getOrNull()
+            }
+            if (name == null) {
+                statusIsGood = false
+                status = rejected
+                busy = false
+                return@launch
+            }
+            statusIsGood = true
+            status = listOfNotNull(connected, name).joinToString(" · ")
+            busy = false
+
+            if (thenSave) {
+                AppSettings.setDebridApiKey(key)
+                AppSettings.setDebridGlobalSearch(globalSearch)
+                AppSettings.setDebridAutoCache(autoCache)
+                com.music.bitchord.data.debrid.DebridApi.invalidateLibrary()
+                com.music.bitchord.data.sources.SourceRegistry.setEnabled(config.id, true)
+                onSaved()
+            }
+        }
+    }
+
+    ServerEditorAlert(
+        hazeState = hazeState,
+        title = stringResource(R.string.debrid_editor_title),
+        description = stringResource(R.string.debrid_editor_subtitle),
+        fields = listOf(
+            EditorField(
+                value = apiKey,
+                onChange = { apiKey = it; status = null },
+                placeholder = stringResource(R.string.debrid_key_hint),
+                keyboardType = KeyboardType.Text,
+                isPassword = true,
+            ),
+        ),
+        status = status,
+        statusIsGood = statusIsGood,
+        testing = busy,
+        canSubmit = apiKey.isNotBlank(),
+        onTest = { run(thenSave = false) },
+        onSave = { run(thenSave = true) },
+        extras = {
+            DebridSetting(
+                title = stringResource(R.string.debrid_global_search),
+                summary = stringResource(R.string.debrid_global_search_summary),
+                checked = globalSearch,
+                onCheckedChange = { globalSearch = it },
+                enabled = !busy,
+            )
+            DebridSetting(
+                title = stringResource(R.string.debrid_auto_cache),
+                summary = stringResource(R.string.debrid_auto_cache_summary),
+                checked = autoCache,
+                onCheckedChange = { autoCache = it },
+                enabled = !busy,
+            )
+        },
+        removeLabel = stringResource(R.string.debrid_clear_key),
+        onRemove = if (AppSettings.debridApiKey.value.isBlank()) null else ({
+            AppSettings.setDebridApiKey("")
+            com.music.bitchord.data.sources.SourceRegistry.setEnabled(config.id, false)
+            onDismiss()
+        }),
+        onDismiss = onDismiss,
+    )
+}
+
+/** One labelled switch in the debrid editor's extra settings. */
+@Composable
+private fun DebridSetting(
+    title: String,
+    summary: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
         )
     }
 }

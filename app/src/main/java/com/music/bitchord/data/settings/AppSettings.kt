@@ -595,6 +595,34 @@ object AppSettings {
     val webdavUsername = MutableStateFlow("")
     val webdavPassword = MutableStateFlow("")
 
+    // ── Debrid ────────────────────────────────────────────────────────────
+
+    /**
+     * Cached torrents through the listener's own debrid account. The key is mirrored out of [AuthStore]
+     * so it stays encrypted at rest and out of backup exports — see
+     * [exportPrefs]. Empty means unconfigured, and the source reads as
+     * missing rather than broken.
+     */
+    val debridApiKey = MutableStateFlow("")
+
+    /**
+     * Also search the provider's global cache, not only the account's own
+     * torrents. Off by default so search uses only the account library unless
+     * the listener explicitly opts into the provider's global catalogue.
+     */
+    val debridGlobalSearch = MutableStateFlow(false)
+
+    /**
+     * Add an addon stream to the debrid account in the background when it is
+     * played.
+     *
+     * Off by default because it writes to the listener's account without
+     * asking, and a cache that fills itself is a quota surprise. When on, a
+     * torrent stream is added only if the provider already has it cached; a
+     * direct URL becomes a web download.
+     */
+    val debridAutoCache = MutableStateFlow(false)
+
     // ── SMB ───────────────────────────────────────────────────────────────
 
     /**
@@ -930,6 +958,9 @@ object AppSettings {
         webdavUrl.value = prefs.getString(KEY_WEBDAV_URL, "").orEmpty()
         webdavUsername.value = prefs.getString(KEY_WEBDAV_USERNAME, "").orEmpty()
         webdavPassword.value = authStore.webdavPassword.orEmpty()
+        debridApiKey.value = authStore.debridApiKey.orEmpty()
+        debridGlobalSearch.value = prefs.getBoolean(KEY_DEBRID_GLOBAL_SEARCH, false)
+        debridAutoCache.value = prefs.getBoolean(KEY_DEBRID_AUTO_CACHE, false)
         smbHost.value = prefs.getString(KEY_SMB_HOST, "").orEmpty()
         smbShare.value = prefs.getString(KEY_SMB_SHARE, "").orEmpty()
         smbBasePath.value = prefs.getString(KEY_SMB_BASE_PATH, "").orEmpty()
@@ -1756,6 +1787,23 @@ object AppSettings {
         publishWebDavAuth()
     }
 
+    /** Writes through to the encrypted store; pass "" to forget. */
+    fun setDebridApiKey(value: String) {
+        val normalized = value.trim()
+        debridApiKey.value = normalized
+        authStore.debridApiKey = normalized.ifEmpty { null }
+    }
+
+    fun setDebridGlobalSearch(value: Boolean) {
+        debridGlobalSearch.value = value
+        prefs.edit().putBoolean(KEY_DEBRID_GLOBAL_SEARCH, value).apply()
+    }
+
+    fun setDebridAutoCache(value: Boolean) {
+        debridAutoCache.value = value
+        prefs.edit().putBoolean(KEY_DEBRID_AUTO_CACHE, value).apply()
+    }
+
     fun clearWebDav() {
         setWebDavUrl("")
         setWebDavUsername("")
@@ -2063,6 +2111,8 @@ object AppSettings {
     private const val KEY_LOCAL_MUSIC_FOLDER_URI = "local_music_folder_uri"
     private const val KEY_WEBDAV_URL = "webdav_url"
     private const val KEY_WEBDAV_USERNAME = "webdav_username"
+    private const val KEY_DEBRID_GLOBAL_SEARCH = "debrid_global_search"
+    private const val KEY_DEBRID_AUTO_CACHE = "debrid_auto_cache"
     private const val KEY_SMB_HOST = "smb_host"
     private const val KEY_SMB_SHARE = "smb_share"
     private const val KEY_SMB_BASE_PATH = "smb_base_path"
@@ -2103,6 +2153,5 @@ object AppSettings {
     private const val KEY_DISCORD_INFO_DISMISSED = "discord_info_dismissed"
     private const val KEY_LAST_VERSION_CODE = "last_version_code"
 }
-
 
 

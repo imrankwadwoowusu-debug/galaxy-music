@@ -212,7 +212,7 @@ private val HI_RES_HINT = Regex("""hi[-_ ]?res|24[-_ ]?bit""", RegexOption.IGNOR
  * the same vocabulary, and a row recognised as Atmos whose stream is not (or
  * the reverse) is the inconsistency that costs a track its immersive mix.
  */
-private val ATMOS_HINT = Regex("""atmos|dolby|eac3[_-]?joc|ec-?3""", RegexOption.IGNORE_CASE)
+private val ATMOS_HINT = Regex("""atmos|dolby|eac3[_-]?joc|ec-?3|ac-?4""", RegexOption.IGNORE_CASE)
 
 // ── Stream ───────────────────────────────────────────────────────────────
 
@@ -235,6 +235,19 @@ private val ATMOS_HINT = Regex("""atmos|dolby|eac3[_-]?joc|ec-?3""", RegexOption
 @Serializable
 data class AddonStream(
     @SerialName("url") val url: String = "",
+    /**
+     * Torrent identity, for addons that answer with a cache entry rather than
+     * a direct URL. Standard in Stremio's stream object; AIOStreams and the
+     * TorBox addons produce it. [fileIdx] is the file's position in the
+     * torrent, not a provider file id — see
+     * [DebridCache][com.music.bitchord.data.debrid.DebridCache].
+     */
+    @SerialName("infoHash") val infoHash: String? = null,
+    /** An explicit magnet, when the addon sends one instead of building it from [infoHash]. */
+    @SerialName("magnet") val magnet: String? = null,
+    @SerialName("fileIdx") val fileIdx: Int? = null,
+    /** Tracker URLs, which some addons send beside [infoHash] but nothing here needs. */
+    @SerialName("sources") val sources: List<String> = emptyList(),
     /** Free text: `mp3`, `flac`, `dash`. Describes the audio, not the transport. */
     @SerialName("format") val format: String = "",
     @SerialName("quality") val quality: String = "",

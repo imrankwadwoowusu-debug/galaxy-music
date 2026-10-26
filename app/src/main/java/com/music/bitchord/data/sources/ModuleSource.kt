@@ -311,8 +311,10 @@ class ModuleSource(
             ?.let { return it }
         val qualityText = quality.orEmpty().uppercase(Locale.ROOT)
         // Tidal's MAX endpoint identifies its Dolby Atmos HLS rendition as
-        // EAC3_JOC. Older module responses expose only "Dolby Atmos", so
-        // preserve its real codec instead of reducing the stream to unknown.
+        // EAC3_JOC. Older module responses expose only "Dolby Atmos", and
+        // AC-4 is the other carrier, so preserve its real codec instead of
+        // reducing the stream to unknown.
+        if ("AC-4" in qualityText || "AC4" in qualityText) return "ac4"
         if ("ATMOS" in qualityText || "EAC3_JOC" in qualityText || "EC-3" in qualityText) return "eac3-joc"
         if (qualityTier(quality.orEmpty()) == LOSSLESS) return "flac"
         return url.substringBefore('?').substringAfterLast('.').lowercase(Locale.ROOT)
@@ -542,6 +544,7 @@ class ModuleSource(
             val text = label.uppercase(Locale.ROOT)
             return when {
                 text.isBlank() -> null
+                ATMOS_HINTS.any { it in text } -> DOLBY
                 LOSSLESS_HINTS.any { it in text } -> LOSSLESS
                 LOW_HINTS.any { it in text } -> LOW
                 HIGH_HINTS.any { it in text } -> HIGH
@@ -549,6 +552,8 @@ class ModuleSource(
             }
         }
 
+        private val ATMOS_HINTS =
+            listOf("ATMOS", "EAC3-JOC", "EAC3_JOC", "AC-3 JOC", "AC-4", "AC4")
         private val LOSSLESS_HINTS =
             listOf("LOSSLESS", "FLAC", "ALAC", "HI-RES", "HI_RES", "HIRES", "24-BIT", "16-BIT", "WAV")
         private val LOW_HINTS = listOf("LOW", "128", "96KBPS", "64")
@@ -558,7 +563,7 @@ class ModuleSource(
         const val LOW_CEILING_KBPS = 128
 
         private val AUDIO_EXTENSIONS =
-            setOf("flac", "alac", "wav", "aiff", "mp3", "m4a", "aac", "ogg", "opus", "webm")
+            setOf("flac", "alac", "wav", "aiff", "mp3", "m4a", "aac", "ogg", "opus", "webm", "eac3", "ec3", "ac4")
 
         /** `320kbps` in a label, and the `.128.` a CDN puts in the filename. */
         private val KBPS_LABEL = Regex("""(\d{2,4})\s*kbps""", RegexOption.IGNORE_CASE)

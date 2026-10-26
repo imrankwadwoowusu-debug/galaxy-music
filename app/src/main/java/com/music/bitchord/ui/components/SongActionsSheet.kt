@@ -31,6 +31,9 @@ import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.DownloadDone
@@ -82,6 +85,7 @@ import com.music.bitchord.data.model.LikeStatus
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
+import com.music.bitchord.data.debrid.DebridCache
 import com.music.bitchord.data.webdav.WebDavUploads
 import com.music.bitchord.download.DownloadState
 import com.music.bitchord.download.Downloads
@@ -138,6 +142,13 @@ fun SongActionsSheet(
      * re-runs it; the conflict dialog keeps that idempotent.
      */
     onUploadToWebDav: (() -> Unit)? = null,
+    /**
+     * Writes this row's bytes into the listener's debrid account. Null hides
+     * the row — the caller passes one only for a file whose public source can
+     * be fetched by the provider. See
+     * [DebridCache][com.music.bitchord.data.debrid.DebridCache].
+     */
+    onCacheToDebrid: (() -> Unit)? = null,
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
     onAddToPlaylist: () -> Unit,
@@ -314,6 +325,7 @@ fun SongActionsSheet(
             )
         }
         WebDavUploadRow(song, palette, isOffline, onUploadToWebDav)
+        DebridCacheRow(song, palette, onCacheToDebrid)
         ActionRow(
             icon = Icons.Rounded.Radio,
             label = stringResource(R.string.start_radio),
@@ -664,6 +676,65 @@ private fun WebDavUploadRow(
             label = stringResource(R.string.upload_to_webdav),
             accent = palette.accent,
             onClick = onUpload,
+        )
+    }
+}
+
+/**
+ * The provider's side of the file: a copy the debrid account can stream
+ * without this phone being awake.
+ *
+ * Only rendered for rows the provider can actually fetch — a public WebDAV
+ * URL, an SMB row that can be bridged, or a saved download whose original
+ * source URL was recorded. The work runs in the background; this row reports
+ * it where it is drawn, the same way the download and upload rows do.
+ */
+@Composable
+private fun DebridCacheRow(
+    song: Song,
+    palette: ArtworkPalette,
+    onCache: (() -> Unit)?,
+) {
+    onCache ?: return
+    val state by DebridCache.active.collectAsStateWithLifecycle()
+    DisposableEffect(song.videoId) {
+        onDispose { DebridCache.dismiss(song.videoId) }
+    }
+    when (val current = state[song.videoId]) {
+        is DebridCache.State.Queued -> ActionRow(
+            icon = Icons.Rounded.CloudUpload,
+            label = stringResource(R.string.caching_to_debrid),
+            tint = palette.accent,
+            accent = palette.accent,
+            onClick = {},
+        )
+        is DebridCache.State.Running -> ActionRow(
+            icon = Icons.Rounded.CloudUpload,
+            label = stringResource(R.string.caching_to_debrid),
+            tint = palette.accent,
+            accent = palette.accent,
+            onClick = {},
+        )
+        is DebridCache.State.Cached -> ActionRow(
+            icon = Icons.Rounded.CloudDone,
+            label = stringResource(R.string.cached_to_debrid),
+            tint = palette.accent,
+            accent = palette.accent,
+            onClick = {},
+        )
+        is DebridCache.State.Failed -> ActionRow(
+            icon = Icons.Rounded.CloudOff,
+            label = current.reason,
+            value = stringResource(R.string.try_again),
+            tint = MaterialTheme.colorScheme.error,
+            accent = MaterialTheme.colorScheme.error,
+            onClick = onCache,
+        )
+        null -> ActionRow(
+            icon = Icons.Rounded.CloudUpload,
+            label = stringResource(R.string.cache_to_debrid),
+            accent = palette.accent,
+            onClick = onCache,
         )
     }
 }

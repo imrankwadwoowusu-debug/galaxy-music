@@ -1,6 +1,7 @@
 package com.music.bitchord.data.sources
 
 import com.music.bitchord.data.TrackLog
+import com.music.bitchord.data.debrid.DebridCache
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.sources.addon.AddonClient
@@ -243,6 +244,28 @@ class AddonSource(
      */
     suspend fun stream(trackId: String, request: StreamRequest, stereoOnly: Boolean): SourceStream? =
         withContext(Dispatchers.IO) {
+            val cacheKey = DebridCache.addonCacheKey(config.id, trackId)
+            // A ready provider-side copy is independent of the addon's uptime:
+            // mint a fresh TorBox URL and avoid the addon's stream request.
+            DebridCache.cachedAddonStream(cacheKey)?.let { cached ->
+                val answersRequest = when (request) {
+                    is StreamRequest.Lossless -> cached.format.isLossless == true
+                    is StreamRequest.Capped -> cached.format.kbps?.let { it <= request.maxKbps } == true
+                    is StreamRequest.Best -> true
+                }
+                val atmosAllowed = DeviceCodecs.playsDolbyAtmos && AppSettings.dolbyAtmos.value
+                if (answersRequest && !ModuleSource.unplayable(cached.format, atmosAllowed)) {
+                    TrackLog.d(TAG, "${config.displayName}: replaying $trackId from the Debrid cache")
+                    return@withContext SourceStream(
+                        url = cached.url,
+                        format = cached.format,
+                        durationSec = cached.durationSec,
+                        sourceConfigId = config.id,
+                        sourceNameOverride = "Debrid (TorBox)",
+                    )
+                }
+                TrackLog.d(TAG, "${config.displayName}: Debrid cache copy doesn't satisfy this play; using addon")
+            }
             if (!admitted("a stream")) return@withContext null
             val tier = request.tier
             val result = client.stream(trackId, tier, stereoOnly)
@@ -274,7 +297,20 @@ class AddonSource(
                 return@withContext fromRow(trackId, tier)
             }
 
-            openable(url, answer, trackId, tier).also { stream ->
+            val opened = openable(url, answer, trackId, tier)
+            if (opened != null) {
+                val row = rows[trackId]
+                DebridCache.autoCacheAddonStream(
+                    answer,
+                    cacheKey = cacheKey,
+                    title = row?.title,
+                    artist = row?.artist,
+                    format = row?.format,
+                    sourceFormat = opened.format,
+                    durationSec = opened.durationSec,
+                )
+            }
+            opened.also { stream ->
                 if (stereoOnly && stream?.format?.isDolbyAtmos == true) {
                     TrackLog.w(
                         TAG,
@@ -300,7 +336,20 @@ class AddonSource(
         val row = rows[trackId] ?: return null
         val url = row.streamURL?.ifBlank { null } ?: return null
         TrackLog.d(TAG, "${config.displayName}: using the search row's own URL for $trackId")
-        return openable(url, AddonStream(url = url, format = row.format), trackId, tier)
+        val answer = AddonStream(url = url, format = row.format)
+        val opened = openable(url, answer, trackId, tier)
+        if (opened != null) {
+            DebridCache.autoCacheAddonStream(
+                answer,
+                cacheKey = DebridCache.addonCacheKey(config.id, trackId),
+                title = row.title,
+                artist = row.artist,
+                format = row.format,
+                sourceFormat = opened.format,
+                durationSec = opened.durationSec,
+            )
+        }
+        return opened
     }
 
     /**
@@ -468,7 +517,7 @@ class AddonSource(
          */
         val AUDIO_CODECS = setOf(
             "flac", "alac", "wav", "aiff", "mp3", "aac", "he-aac", "m4a", "mp4",
-            "ogg", "opus", "vorbis", "webm", "eac3-joc", "ec3-joc",
+            "ogg", "opus", "vorbis", "webm", "eac3-joc", "ec3-joc", "ac4", "ac-4",
         )
     }
 }

@@ -59,6 +59,7 @@
 - **Discord Rich Presence** — in-app login, live track/artist/album and progress.
 - **Scrobbling** to Last.fm and ListenBrainz.
 - **Pluggable sources** — add, edit, test and health-check module sources.
+- **Debrid streaming** — bit-exact RedLake audio from your debrid library and its global cache, with optional auto-caching of addon streams.
 
     </td>
     <td width="50%" valign="top">

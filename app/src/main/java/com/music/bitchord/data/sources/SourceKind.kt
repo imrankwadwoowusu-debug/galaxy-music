@@ -138,6 +138,28 @@ enum class SourceKind(
     ),
 
     /**
+     * Cached torrents through the listener's debrid account — today TorBox,
+     * further providers behind the same row tomorrow.
+     *
+     * The account's library is the base index: its RedLake file names are read
+     * back into title, artist and tier, and a match is bit-exact audio the
+     * service never has to stream itself. The provider's global cache is an
+     * optional second index, and a global row is added to the account only
+     * when it is played. No music service is consulted. Needs an API key,
+     * entered on the row's editor, so it seeds off like JioSaavn until one is
+     * given.
+     */
+    DEBRID(
+        label = "Debrid",
+        detail = "Bit-exact RedLake audio from your debrid account and its global cache. Needs an API key.",
+        labels = listOf("Lossless", "Atmos", "RedLake"),
+        needsServer = false,
+        canServeLossless = true,
+        worthPrefetching = true,
+        rank = 2,
+    ),
+
+    /**
      * The source the app was built on, listed here so it always has a fixed
      * place: second, behind the module source. It cannot be removed — see
      * [SourceRegistry]. Nothing else in the app can supply a home feed, a

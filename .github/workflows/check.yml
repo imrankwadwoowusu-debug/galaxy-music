@@ -46,7 +46,8 @@ jobs:
         run: ./gradlew testDevDebugUnitTest
 
       - name: Build the dev APK
-        run: ./gradlew assembleDevDebug
+        # Bound parallel APK split packaging and native builds on hosted runners.
+        run: ./gradlew assembleDevDebug --max-workers=2
 
       - name: Upload the dev APK
         uses: actions/upload-artifact@v4

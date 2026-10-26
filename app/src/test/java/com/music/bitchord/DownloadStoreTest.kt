@@ -92,6 +92,20 @@ class DownloadStoreTest {
     }
 
     @Test
+    fun `immersive audio keeps the container it arrived in`() {
+        // MP4 is the usual box for both, and the one the media store knows.
+        assertEquals("m4a", DownloadStore.storable("eac3-joc")?.extension)
+        assertEquals("m4a", DownloadStore.storable("ac4")?.extension)
+        assertEquals("audio/mp4", DownloadStore.storable("ac4")?.mimeType)
+
+        // A raw Dolby file is a different thing; do not rename it to .m4a.
+        assertEquals("eac3", DownloadStore.storable("eac3-joc", "eac3")?.extension)
+        assertEquals("audio/eac3", DownloadStore.storable("eac3-joc", "eac3")?.mimeType)
+        assertEquals("ac4", DownloadStore.storable("ac-4", "ac4")?.extension)
+        assertEquals("audio/ac4", DownloadStore.storable("ac-4", "ac4")?.mimeType)
+    }
+
+    @Test
     fun `codecs are matched however a source spells them`() {
         assertEquals("flac", DownloadStore.storable("FLAC")?.extension)
         assertEquals("flac", DownloadStore.storable(" x-flac ")?.extension)

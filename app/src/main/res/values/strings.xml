@@ -1128,6 +1128,23 @@
 
     <string name="card_songs_format">%1$s songs</string>
 
+    <string name="debrid_editor_title">Debrid</string>
+    <string name="debrid_editor_subtitle">Bit-exact RedLake audio through your debrid account</string>
+    <string name="debrid_api_key">Debrid API key</string>
+    <string name="debrid_api_key_required">Debrid API key required</string>
+    <string name="debrid_key_hint">Paste your Debrid API key</string>
+    <string name="debrid_key_note">Find it on your debrid provider’s settings page. Stored encrypted on this device, never uploaded anywhere else.</string>
+    <string name="debrid_connected">Connected</string>
+    <string name="debrid_rejected">That key was rejected</string>
+    <string name="debrid_clear_key">Clear key</string>
+    <string name="debrid_global_search">Search global cache</string>
+    <string name="debrid_global_search_summary">Include cached releases outside your account. A release is added to your account only when you play it.</string>
+    <string name="debrid_auto_cache">Auto-cache addon streams</string>
+    <string name="debrid_auto_cache_summary">Cache streams after playback starts. If TorBox rejects the URL, BitChord may seed the completed cache file from this device until TorBox finishes. This uses upload data and exposes your IP to torrent peers; only seed content you have the right to share.</string>
+    <string name="cache_to_debrid">Cache to Debrid</string>
+    <string name="caching_to_debrid">Caching to Debrid…</string>
+    <string name="cached_to_debrid">Cached to Debrid</string>
+
     <string name="source_needs_lossless_output">Needs a lossless output · use a lossless supported device</string>
     <string name="source_needs_lossless_bt_codec">Needs a lossless output · Bluetooth is on %1$s; use a lossless supported device</string>
     <string name="source_needs_lossless_bt_unknown">Needs a lossless output · can’t tell which Bluetooth codec is in use</string>

@@ -35,6 +35,22 @@ val lastfmSecret: String = (
     ).trim()
 
 /*
+ * BotGuard (PO-token) credentials, shared with the phone build. Empty is a
+ * supported state: PO-token minting reports unavailable and extraction falls
+ * back to non-PoToken clients, so a fresh checkout builds and runs.
+ */
+val botguardApiKey: String = (
+    localProps.getProperty("BOTGUARD_API_KEY")
+        ?: System.getenv("BOTGUARD_API_KEY")
+        ?: ""
+    ).trim()
+val botguardRequestKey: String = (
+    localProps.getProperty("BOTGUARD_REQUEST_KEY")
+        ?: System.getenv("BOTGUARD_REQUEST_KEY")
+        ?: ""
+    ).trim()
+
+/*
  * Where Listen Together's party server lives. Not a credential — it is a public
  * URL, and every device in a party has to be pointed at the same one — but it is
  * deployment-specific rather than a property of the source, which is what puts
@@ -90,6 +106,9 @@ android {
         // Last.fm credentials are supplied locally and never committed.
         buildConfigField("String", "LASTFM_API_KEY", "\"${lastfmApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         buildConfigField("String", "LASTFM_SECRET", "\"${lastfmSecret.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        // BotGuard credentials are supplied locally and never committed.
+        buildConfigField("String", "BOTGUARD_API_KEY", "\"${botguardApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        buildConfigField("String", "BOTGUARD_REQUEST_KEY", "\"${botguardRequestKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         buildConfigField(
             "String",
             "LISTEN_TOGETHER_SERVER",
@@ -291,6 +310,13 @@ val newPipeExtractorStripped = tasks.register<org.gradle.api.tasks.bundling.Jar>
 dependencies {
     implementation(project(":shared"))
     implementation(project(":sharedUi"))
+
+    // Required by the shared phone/TV source tree for local cache seeding.
+    implementation("org.libtorrent4j:libtorrent4j:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm64:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-x86:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-x86_64:2.1.0-39")
 
     // ---- Compose (Material 3) ----
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
