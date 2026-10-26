@@ -619,7 +619,10 @@ internal fun PlayerActionRow(
                     val placeable = measurable.measure(constraints.copy(minWidth = 0))
                     layout(constraints.maxWidth, placeable.height) {
                         val centred = (constraints.maxWidth - placeable.width) / 2f
-                        placeable.place((centred * (1f - toStart.value)).roundToInt(), 0)
+                        // Relative, so in a right-to-left layout it slides to the
+                        // right, where the lyrics glyph is, and not on top of the
+                        // queue glyph at the left.
+                        placeable.placeRelative((centred * (1f - toStart.value)).roundToInt(), 0)
                     }
                 },
                 targetState = queueOpen,
