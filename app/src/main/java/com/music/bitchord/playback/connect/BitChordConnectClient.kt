@@ -57,6 +57,31 @@ class BitChordConnectClient(
     private fun startSseStream(device: ConnectDevice) {
         sseJob?.cancel()
         sseJob = scope.launch(Dispatchers.IO) {
+            // Fetch initial snapshot immediately so UI updates without waiting for first SSE event
+            try {
+                val infoUrl = URL("http://${device.host}:${device.port}/connect/info")
+                val infoConn = (infoUrl.openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 2000
+                    readTimeout = 2000
+                    requestMethod = "GET"
+                }
+                if (infoConn.responseCode == 200) {
+                    val body = infoConn.inputStream.bufferedReader().use { it.readText() }
+                    val json = JSONObject(body)
+                    val playbackObj = json.optJSONObject("playback")
+                    if (playbackObj != null) {
+                        val snapshot = ConnectPlaybackSnapshot.fromJson(playbackObj)
+                        _remoteState.value = snapshot
+                        withContext(Dispatchers.Main) {
+                            onStateUpdated(snapshot)
+                        }
+                    }
+                }
+                infoConn.disconnect()
+            } catch (e: Exception) {
+                Log.d(TAG, "Initial connect/info fetch note: ${e.message}")
+            }
+
             while (isActive && isConnected) {
                 var connection: HttpURLConnection? = null
                 try {

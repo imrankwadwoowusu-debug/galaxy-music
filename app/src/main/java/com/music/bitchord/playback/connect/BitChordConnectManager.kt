@@ -71,6 +71,7 @@ object BitChordConnectManager {
 
         val spk = speaker ?: BitChordConnectSpeaker(
             client = cli,
+            localPlayer = playerProvider,
             onSpeakerStateChanged = {
                 // state update trigger
             },
@@ -132,9 +133,9 @@ object BitChordConnectManager {
         cli.connect(device)
         spk.setActive(true)
 
-        // Hand-off: If the phone is currently playing a song, transfer playback smoothly to TV
-        if (player != null && player.playbackState != Player.STATE_IDLE && player.mediaItemCount > 0) {
-            val wasPlaying = player.isPlaying
+        // Hand-off: ONLY if the phone is currently actively playing music, transfer playback to TV.
+        // If the phone was idle/paused, do NOT overwrite the TV; instead let the phone adopt the TV's song!
+        if (player != null && player.isPlaying && player.mediaItemCount > 0) {
             val currentPos = player.currentPosition.coerceAtLeast(0L)
             val currentItem = player.currentMediaItem
             val currentSong = currentItem?.toSong()
@@ -171,6 +172,7 @@ object BitChordConnectManager {
 
         if (resumeHere && wasRemotePlaying && player != null) {
             player.seekTo(currentRemotePos)
+            player.prepare()
             player.play()
         }
     }

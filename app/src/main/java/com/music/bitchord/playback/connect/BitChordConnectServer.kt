@@ -499,9 +499,21 @@ class BitChordConnectServer(
 
     private fun getLocalIpAddress(): String? {
         runCatching {
-            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
-            for (intf in interfaces) {
+            val interfaces = NetworkInterface.getNetworkInterfaces()?.toList() ?: return null
+            val sorted = interfaces.sortedByDescending { intf ->
+                val name = intf.name.lowercase()
+                when {
+                    name.startsWith("wlan") -> 3
+                    name.startsWith("eth") -> 2
+                    name.startsWith("en") -> 2
+                    name.startsWith("rmnet") || name.startsWith("dummy") -> 0
+                    else -> 1
+                }
+            }
+            for (intf in sorted) {
                 if (intf.isLoopback || !intf.isUp) continue
+                val name = intf.name.lowercase()
+                if (name.startsWith("rmnet") || name.startsWith("dummy")) continue
                 val addrs = intf.inetAddresses ?: continue
                 for (addr in addrs) {
                     if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {

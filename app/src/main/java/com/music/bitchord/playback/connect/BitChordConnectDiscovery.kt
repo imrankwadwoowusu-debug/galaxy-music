@@ -112,10 +112,9 @@ class BitChordConnectDiscovery(
                 override fun onServiceResolved(resolvedInfo: NsdServiceInfo) {
                     val host = resolvedInfo.host?.hostAddress ?: return
                     val port = resolvedInfo.port
-                    val myIp = getLocalIpAddress()
 
                     // Ignore self
-                    if (host == myIp || host == "127.0.0.1") return
+                    if (isLocalAddress(host) || host == "127.0.0.1") return
 
                     scope.launch(Dispatchers.IO) {
                         probeDevice(host, port)
@@ -139,22 +138,26 @@ class BitChordConnectDiscovery(
     fun scanSubnet() {
         scanJob?.cancel()
         scanJob = scope.launch(Dispatchers.IO) {
-            val localIp = getLocalIpAddress() ?: return@launch
-            val subnetPrefix = localIp.substringBeforeLast(".") + "."
+            val localIps = getLocalIpAddresses()
+            if (localIps.isEmpty()) return@launch
 
-            // Parallel sweep on port 8765
-            val deferreds = (1..254).map { hostNum ->
-                val targetIp = "$subnetPrefix$hostNum"
-                if (targetIp == localIp) return@map null
+            for (localIp in localIps) {
+                val subnetPrefix = localIp.substringBeforeLast(".") + "."
 
-                async(Dispatchers.IO) {
-                    if (isPortOpen(targetIp, BitChordConnectServer.CONNECT_PORT, timeoutMs = 250)) {
-                        probeDevice(targetIp, BitChordConnectServer.CONNECT_PORT)
+                // Parallel sweep on port 8765
+                val deferreds = (1..254).map { hostNum ->
+                    val targetIp = "$subnetPrefix$hostNum"
+                    if (targetIp == localIp) return@map null
+
+                    async(Dispatchers.IO) {
+                        if (isPortOpen(targetIp, BitChordConnectServer.CONNECT_PORT, timeoutMs = 250)) {
+                            probeDevice(targetIp, BitChordConnectServer.CONNECT_PORT)
+                        }
                     }
-                }
-            }.filterNotNull()
+                }.filterNotNull()
 
-            deferreds.awaitAll()
+                deferreds.awaitAll()
+            }
         }
     }
 
@@ -218,19 +221,34 @@ class BitChordConnectDiscovery(
         }.getOrDefault(false)
     }
 
-    private fun getLocalIpAddress(): String? {
+    private fun getLocalIpAddresses(): List<String> {
+        val list = mutableListOf<String>()
         runCatching {
-            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
-            for (intf in interfaces) {
+            val interfaces = NetworkInterface.getNetworkInterfaces()?.toList() ?: return emptyList()
+            val sorted = interfaces.sortedByDescending { intf ->
+                val name = intf.name.lowercase()
+                when {
+                    name.startsWith("wlan") -> 3
+                    name.startsWith("eth") -> 2
+                    name.startsWith("en") -> 2
+                    name.startsWith("rmnet") || name.startsWith("dummy") -> 0
+                    else -> 1
+                }
+            }
+            for (intf in sorted) {
                 if (intf.isLoopback || !intf.isUp) continue
+                val name = intf.name.lowercase()
+                if (name.startsWith("rmnet") || name.startsWith("dummy")) continue
                 val addrs = intf.inetAddresses ?: continue
                 for (addr in addrs) {
                     if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
-                        return addr.hostAddress
+                        list.add(addr.hostAddress)
                     }
                 }
             }
         }
-        return null
+        return list
     }
+
+    fun getLocalIpAddress(): String? = getLocalIpAddresses().firstOrNull()
 }

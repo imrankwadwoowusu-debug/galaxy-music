@@ -7668,10 +7668,10 @@ class PlaybackService : MediaLibraryService() {
 
         /** Back, on a receiver: restart past the first seconds, else the previous track. */
         private fun castPrevious() {
-            if (cast.positionMs > wrappedPlayer.maxSeekToPreviousPosition || !wrappedPlayer.hasPreviousMediaItem()) {
+            if (cast.positionMs > 3000L) {
                 cast.seekTo(0L)
             } else {
-                wrappedPlayer.seekToPreviousMediaItem()
+                cast.seekToPrevious()
             }
         }
 
@@ -7928,6 +7928,10 @@ class PlaybackService : MediaLibraryService() {
             if (locked()) return
             onUserIntent()
             crossfade.onSkipRequested()
+            if (cast.active) {
+                cast.seekToNext()
+                return
+            }
             wrappedPlayer.seekToNextMediaItem()
         }
 
@@ -7935,6 +7939,10 @@ class PlaybackService : MediaLibraryService() {
             if (locked()) return
             onUserIntent()
             crossfade.onSkipRequested()
+            if (cast.active) {
+                cast.seekToNext()
+                return
+            }
             wrappedPlayer.seekToNext()
         }
     }
